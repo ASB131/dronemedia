@@ -1,0 +1,136 @@
+# Drone Media configuration (Immich-style)
+# Copy to your APP_DATA_PATH mount or edit in place for local development.
+# Environment variables override values here (see .env.example).
+
+server:
+  host: "0.0.0.0"
+  port: 2283
+  # Public URL used by Auth.js callbacks (LAN/IP access, no domain required).
+  # Docker Compose publishes the app on host port 3384 by default (container listens on 2283).
+  # Overridden by PUBLIC_URL env in production / behind a reverse proxy.
+  publicUrl: "http://192.168.1.177:3384"
+
+logging:
+  level: info # trace | debug | info | warn | error | fatal
+
+storage:
+  # Three-tier paths. When running via docker-compose, these are overridden
+  # by the APP_DATA_PATH / CACHE_PATH / MEDIA_PATH env vars set in
+  # docker-compose.yml (which bind-mount to the real host paths below).
+  # Only relevant here for running the app directly on the host.
+  appDataPath: "./data/app"
+  # Cache tier: upload staging, thumbnails, proxies, HLS, photo web previews.
+  # Prefer SSD. PostGIS should live on its own SSD path (never under cache/).
+  cachePath: "./data/cache"
+  mediaPath: "./data/media"
+
+  adapter: local # local | s3
+  local:
+    # Used when adapter is "local" (default)
+    enabled: true
+  s3:
+    # Used when adapter is "s3" (MinIO, AWS S3, Backblaze B2, etc.)
+    endpoint: ""
+    region: "us-east-1"
+    bucket: "drone-media"
+    accessKeyId: ""
+    secretAccessKey: ""
+    forcePathStyle: true
+
+upload:
+  maxFileSizeBytes: 85899345920 # 80 GB
+  chunkSizeBytes: 16777216 # 16 MB
+  incompleteUploadTtlHours: 24
+
+deduplication:
+  algorithm: xxhash # xxhash | sha256
+  onDuplicate: flag # reject | flag — flag surfaces "already exists" in UI
+
+users:
+  defaultStorageQuotaBytes: 1099511627776 # 1 TB
+  inviteOnly: false
+
+auth:
+  login:
+    maxAttempts: 5
+    lockoutBaseSeconds: 30
+
+transcoding:
+  # Set nvenc when the worker container has an NVIDIA GPU (docker --gpus).
+  hwAccel: none # none | qsv | nvenc | vaapi
+  hls:
+    segmentDurationSeconds: 6
+    playlistType: vod
+    # ABR ladder shown in the player quality menu (full-res originals stay on media).
+    heights: [1080, 1440]
+  proxy:
+    maxHeight: 1440
+    videoCodec: libx264
+    audioCodec: aac
+  sequences:
+    fps: 24
+    fullResCrf: 17
+    fullResPreset: medium
+
+notifications:
+  sse:
+    enabled: true
+    heartbeatIntervalSeconds: 30
+  polling:
+    enabled: true
+    fallbackIntervalSeconds: 15
+
+bin:
+  purgeAfterDays: 30
+
+images:
+  thumbnailMaxEdge: 480
+  thumbnailQuality: 80
+  # In-app photo view (cache). Source / download still uses media originals.
+  webMaxEdge: 2048
+  webQuality: 82
+
+nightly:
+  binCleanupCron: "0 3 * * *"
+  orphanUploadCleanupCron: "0 * * * *"
+  integrityCheckCron: "0 4 * * 0"
+
+database:
+  # Overridden by DATABASE_URL in production
+  pool:
+    web:
+      max: 10
+      idleTimeoutMs: 30000
+    worker:
+      max: 5
+      idleTimeoutMs: 60000
+
+redis:
+  # Overridden by REDIS_URL in production
+  url: "redis://localhost:6379"
+
+jobs:
+  concurrency:
+    # Keep at 1 for lightweight self-host RAM; overlapping ffmpeg is costly.
+    dedup: 1
+    thumbnails: 1
+    metadata: 1
+    srtFlightPath: 1
+    webTranscoding: 1
+    panoramaStitch: 1
+    sequenceExport: 1
+  retry:
+    attempts: 3
+    backoffMs: 5000
+
+theme:
+  default: system # light | dark | system
+  accent: "#4250AF"
+
+backup:
+  enabled: false
+  cron: "0 3 * * *"
+  retainDays: 14
+
+versionCheck:
+  enabled: true

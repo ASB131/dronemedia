@@ -1,0 +1,152 @@
+# Drone Media — template for GitHub / other hosts.
+# Copy to docker-compose.yml (or edit paths in place).
+# In-container paths stay /data/app, /data/cache, /data/media.
+#
+# App publishes host 3384 -> container 2283 (avoid Immich on host 2283).
+# Postgres and Redis are not published to the host.
+#
+# Redis must be a host bind owned by uid 999 (redis user), e.g.:
+#   mkdir -p /path/to/redis && chown -R 999:999 /path/to/redis
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: dronemedia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: drone_media
+      POSTGRES_PASSWORD: drone_media
+      POSTGRES_DB: drone_media
+    volumes:
+      # EDIT: Postgres data — prefer a fast SSD; never nest under cache/
+      - "/path/to/database/postgres:/var/lib/postgresql/data"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drone_media -d drone_media"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: dronemedia-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      # EDIT: Redis on SSD — chown -R 999:999 this directory on the host
+      - "/path/to/redis:/data"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: dronemedia-db-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: drone_media
+      APP_DATA_PATH: /data/app
+      CACHE_PATH: /data/cache
+      MEDIA_PATH: /data/media
+      CONFIG_PATH: /app/config.yml
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_data:/data/app
+      - ./config.yml:/app/config.yml:ro
+      # EDIT: cache on SSD (thumbnails, HLS, proxies, upload staging)
+      - "/path/to/cache:/data/cache"
+      # EDIT: originals on HDD (bulk media)
+      - "/path/to/media:/data/media"
+    command: ["sh", "./docker/migrate.sh"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dronemedia-app
+    restart: unless-stopped
+    mem_limit: ${APP_MEM_LIMIT:-3g}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      HOSTNAME: "0.0.0.0"
+      PORT: 2283
+      PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:3384}
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      AUTH_TRUST_HOST: "true"
+      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      REDIS_URL: redis://redis:6379
+      APP_DATA_PATH: /data/app
+      CACHE_PATH: /data/cache
+      MEDIA_PATH: /data/media
+      CONFIG_PATH: /app/config.yml
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      RUN_MIGRATIONS: "false"
+      NODE_OPTIONS: ${APP_NODE_OPTIONS:---max-old-space-size=2048}
+    ports:
+      - "3384:2283"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - app_data:/data/app
+      - ./config.yml:/app/config.yml:ro
+      # EDIT: cache on SSD
+      - "/path/to/cache:/data/cache"
+      # EDIT: media on HDD
+      - "/path/to/media:/data/media"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:2283/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: dronemedia-worker
+    restart: unless-stopped
+    mem_limit: ${WORKER_MEM_LIMIT:-6g}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      REDIS_URL: redis://redis:6379
+      APP_DATA_PATH: /data/app
+      CACHE_PATH: /data/cache
+      MEDIA_PATH: /data/media
+      CONFIG_PATH: /app/config.yml
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RUN_MIGRATIONS: "false"
+      NODE_OPTIONS: ${WORKER_NODE_OPTIONS:---max-old-space-size=2048}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - app_data:/data/app
+      - ./config.yml:/app/config.yml:ro
+      - "/path/to/cache:/data/cache"
+      - "/path/to/media:/data/media"
+
+volumes:
+  app_data:

@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+*.md
+tmp-*
+**/.DS_Store
+**/__pycache__
+agent-transcripts
+.cursor
