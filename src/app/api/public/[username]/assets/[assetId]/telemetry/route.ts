@@ -52,10 +52,11 @@ export async function GET(
         type?: string;
         coordinates?: [number, number];
       };
-      if (parsed?.type === "Point" && parsed.coordinates?.length >= 2) {
+      const coords = parsed.coordinates;
+      if (parsed?.type === "Point" && coords && coords.length >= 2) {
         homePoint = {
-          lng: parsed.coordinates[0]!,
-          lat: parsed.coordinates[1]!,
+          lng: coords[0]!,
+          lat: coords[1]!,
         };
       }
     }
