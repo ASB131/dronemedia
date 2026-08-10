@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 
 import { getWebDb } from "@/lib/db";
-import { assets } from "@/lib/db/schema";
+import { assets, flightTelemetry } from "@/lib/db/schema";
 import type { AssetType } from "@/lib/assets/asset-type";
 import type { MediaMetadata } from "./media-metadata";
 import { panoramaViewerBadgeLabel } from "./panorama-viewer-mode";
@@ -30,6 +30,8 @@ export type TimelineAssetDto = {
   panoramaBadge?: string | null;
   /** Width / height from media metadata; defaults to 16/9 for drone footage. */
   aspectRatio: number;
+  location: { lat: number; lng: number } | null;
+  hasFlightPath: boolean;
 };
 
 function aspectRatioFromMetadata(
@@ -133,9 +135,17 @@ function toTimelineAssetDto(row: {
   capturedAtOriginal: Date | null;
   capturedAtOverride: Date | null;
   createdAt: Date;
+  lat: number | null;
+  lng: number | null;
+  hasFlightPath: boolean;
 }): TimelineAssetDto {
   const capturedAt = getEffectiveCaptureDate(row);
   const tz = getCaptureTimezone(row);
+  const hasCoords =
+    row.lat != null &&
+    row.lng != null &&
+    Number.isFinite(row.lat) &&
+    Number.isFinite(row.lng);
   return {
     id: row.id,
     displayName: row.displayName,
@@ -155,6 +165,8 @@ function toTimelineAssetDto(row: {
       mediaMetadata: row.mediaMetadata,
     }),
     aspectRatio: aspectRatioFromMetadata(row.mediaMetadata),
+    location: hasCoords ? { lat: row.lat!, lng: row.lng! } : null,
+    hasFlightPath: Boolean(row.hasFlightPath),
   };
 }
 
@@ -176,6 +188,26 @@ function mediaTypeCondition(mediaType: TimelineMediaTypeFilter): SQL | null {
   }
   return null;
 }
+
+const timelineAssetSelect = {
+  id: assets.id,
+  displayName: assets.displayName,
+  assetType: assets.assetType,
+  favorite: assets.favorite,
+  isPublic: assets.isPublic,
+  mainFileExt: assets.mainFileExt,
+  hasSrt: assets.hasSrt,
+  frameCount: assets.frameCount,
+  sequenceKind: assets.sequenceKind,
+  mediaMetadata: assets.mediaMetadata,
+  capturedTimezone: assets.capturedTimezone,
+  capturedAtOriginal: assets.capturedAtOriginal,
+  capturedAtOverride: assets.capturedAtOverride,
+  createdAt: assets.createdAt,
+  lat: sql<number | null>`ST_Y(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
+  lng: sql<number | null>`ST_X(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
+  hasFlightPath: sql<boolean>`${flightTelemetry.flightPath} is not null`,
+};
 
 async function listOnThisDayGroups(
   userId: string,
@@ -203,8 +235,9 @@ async function listOnThisDayGroups(
   if (typeCondition) conditions.push(typeCondition);
 
   const rows = await db
-    .select()
+    .select(timelineAssetSelect)
     .from(assets)
+    .leftJoin(flightTelemetry, eq(flightTelemetry.assetId, assets.id))
     .where(and(...conditions))
     .orderBy(desc(displayCapturedAt), desc(assets.id))
     .limit(48);
@@ -267,23 +300,9 @@ export async function getTimelineForUser(
   }
 
   const rows = await db
-    .select({
-      id: assets.id,
-      displayName: assets.displayName,
-      assetType: assets.assetType,
-      favorite: assets.favorite,
-      isPublic: assets.isPublic,
-      mainFileExt: assets.mainFileExt,
-      hasSrt: assets.hasSrt,
-      frameCount: assets.frameCount,
-      sequenceKind: assets.sequenceKind,
-      mediaMetadata: assets.mediaMetadata,
-      capturedTimezone: assets.capturedTimezone,
-      capturedAtOriginal: assets.capturedAtOriginal,
-      capturedAtOverride: assets.capturedAtOverride,
-      createdAt: assets.createdAt,
-    })
+    .select(timelineAssetSelect)
     .from(assets)
+    .leftJoin(flightTelemetry, eq(flightTelemetry.assetId, assets.id))
     .where(and(...conditions))
     .orderBy(desc(displayCapturedAt), desc(assets.id))
     .limit(limit + 1);

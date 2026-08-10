@@ -36,6 +36,7 @@ export async function GET(
     const [row] = await db
       .select({
         pathJson: sql<string | null>`ST_AsGeoJSON(${flightTelemetry.flightPath})`,
+        homeJson: sql<string | null>`ST_AsGeoJSON(${flightTelemetry.homePoint})`,
       })
       .from(flightTelemetry)
       .where(eq(flightTelemetry.assetId, assetId))
@@ -44,6 +45,20 @@ export async function GET(
     const flightPath: LineStringGeoJson | null = row?.pathJson
       ? (JSON.parse(row.pathJson) as LineStringGeoJson)
       : null;
+
+    let homePoint: { lat: number; lng: number } | null = null;
+    if (row?.homeJson) {
+      const parsed = JSON.parse(row.homeJson) as {
+        type?: string;
+        coordinates?: [number, number];
+      };
+      if (parsed?.type === "Point" && parsed.coordinates?.length >= 2) {
+        homePoint = {
+          lng: parsed.coordinates[0]!,
+          lat: parsed.coordinates[1]!,
+        };
+      }
+    }
 
     let series: TelemetrySeriesPoint[] | undefined;
     if (wantSeries) {
@@ -80,6 +95,7 @@ export async function GET(
 
     return NextResponse.json({
       flightPath,
+      homePoint,
       ...(wantSeries ? { series } : {}),
     });
   } catch (error) {

@@ -27,6 +27,7 @@ export async function GET(
     if (!telemetry) {
       return NextResponse.json({
         flightPath: null,
+        homePoint: null,
         series: [],
       });
     }

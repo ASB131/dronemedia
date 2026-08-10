@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Album,
   ArrowLeft,
@@ -22,8 +22,15 @@ import { AddToFlightModal } from "@/components/assets/add-to-flight-modal";
 import { AssetDownloadButton } from "@/components/assets/asset-download-button";
 import { FlightPathPreview } from "@/components/assets/flight-path-preview";
 import { AltitudeGraph } from "@/components/assets/altitude-graph";
+import { MissingTelemetryCallout } from "@/components/assets/missing-telemetry-callout";
+import {
+  PhotoClipContextCard,
+  type PhotoClipContextView,
+} from "@/components/assets/photo-clip-context-card";
+import { PlaybackHud } from "@/components/assets/playback-hud";
 import { PreviewLutPicker } from "@/components/assets/preview-lut-picker";
 import { useTelemetryCursor } from "@/components/assets/video-player";
+import { distanceMeters } from "@/lib/map/colocated-layout";
 
 const PhotoViewer = dynamic(
   () =>
@@ -244,7 +251,42 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const [selectedTileIndex, setSelectedTileIndex] = useState<number | null>(
     null,
   );
+  const [hudEnabled, setHudEnabled] = useState(true);
+  const [clipContext, setClipContext] = useState<PhotoClipContextView | null>(
+    null,
+  );
+  const [seekRequest, setSeekRequest] = useState<{
+    timeSeconds: number;
+    token: number;
+  } | null>(null);
   const playbackPrefs = usePlaybackPreferences();
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("dm-playback-hud");
+      if (stored === "0") setHudEnabled(false);
+      if (stored === "1") setHudEnabled(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dm-playback-hud", hudEnabled ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [hudEnabled]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = new URLSearchParams(window.location.search).get("t");
+    if (raw == null) return;
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    setSeekRequest({ timeSeconds: seconds, token: Date.now() });
+  }, [assetId]);
 
   async function ensureSideLists() {
     if (sideListsLoadedRef.current) return;
@@ -308,6 +350,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     setSelectedTileIndex(null);
     setAlbumMessage(null);
     setEditMessage(null);
+    setClipContext(null);
     if (detailPayload.asset.location) {
       const geoRes = await fetch(
         `/api/geo/reverse?lat=${detailPayload.asset.location.lat}&lng=${detailPayload.asset.location.lng}`,
@@ -335,6 +378,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       };
       setTelemetry({
         flightPath: payload.flightPath,
+        homePoint: payload.homePoint ?? null,
       });
       setSeries(payload.series ?? []);
     } else {
@@ -348,6 +392,19 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       setChapters(payload.chapters);
     } else {
       setChapters([]);
+    }
+
+    const still =
+      detailPayload.asset.assetType === "photo" ||
+      detailPayload.asset.sequenceKind === "panorama";
+    if (still && detailPayload.asset.flightId) {
+      const clipRes = await fetch(`/api/assets/${id}/clip-context`);
+      if (clipRes.ok) {
+        const payload = (await clipRes.json()) as {
+          context: PhotoClipContextView | null;
+        };
+        setClipContext(payload.context);
+      }
     }
   }
 
@@ -560,6 +617,14 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   }
 
   const cursor = useTelemetryCursor(series, currentTime);
+  const homeDistanceMeters = useMemo(() => {
+    if (!cursor || !telemetry?.homePoint) return null;
+    return distanceMeters(
+      { lat: cursor.lat, lng: cursor.lng },
+      telemetry.homePoint,
+    );
+  }, [cursor, telemetry?.homePoint]);
+  const showHud = hudEnabled && series.length > 1;
 
   if (error) {
     return (
@@ -837,6 +902,21 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               defaultResolution={playbackPrefs.defaultPlaybackResolution}
               lutId={effectiveLutId}
               scrubberMarkers={scrubberMarkers}
+              seekRequest={seekRequest}
+              hudEnabled={hudEnabled}
+              onHudEnabledChange={setHudEnabled}
+              overlay={
+                showHud ? (
+                  <PlaybackHud
+                    values={{
+                      altitudeMeters: cursor?.altitudeMeters ?? null,
+                      speedMps: cursor?.speedMps ?? null,
+                      homeDistanceMeters,
+                      satellites: null,
+                    }}
+                  />
+                ) : null
+              }
               onTimeUpdate={(time) => setCurrentTime(time)}
               className="absolute inset-0 size-full object-contain"
             />
@@ -950,6 +1030,23 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                 </div>
               )}
             </div>
+
+            {clipContext ? <PhotoClipContextCard context={clipContext} /> : null}
+
+            <MissingTelemetryCallout
+              kind={
+                asset.assetType === "video"
+                  ? "video"
+                  : asset.assetType === "sequence"
+                    ? "sequence"
+                    : "photo"
+              }
+              hasSrt={asset.hasSrt}
+              parseStatus={asset.telemetry?.parseStatus ?? null}
+              hasLocation={Boolean(asset.location)}
+              hasFlightPath={Boolean(asset.telemetry?.hasFlightPath)}
+              hasSeries={series.length > 1}
+            />
 
             {asset.assetType === "sequence" && !isPanorama ? (
               <MetaSection

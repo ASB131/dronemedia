@@ -17,6 +17,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { MediaGridSkeleton } from "@/components/ui/skeletons";
+import { TimelineHoverMiniMap } from "@/components/timeline/timeline-hover-minimap";
 import type {
   OnThisDayGroupDto,
   TimelineAssetDto,
@@ -40,6 +41,7 @@ function AssetTile({
   onToggle,
   onQuickSelect,
   onOpen,
+  onPreview,
 }: {
   asset: TimelineAssetDto;
   selected: boolean;
@@ -47,6 +49,7 @@ function AssetTile({
   onToggle: (shiftKey: boolean) => void;
   onQuickSelect: (shiftKey: boolean) => void;
   onOpen?: () => void;
+  onPreview?: (asset: TimelineAssetDto | null) => void;
 }) {
   const [thumbLoaded, setThumbLoaded] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
@@ -153,6 +156,10 @@ function AssetTile({
       <button
         type="button"
         onClick={(event) => onToggle(event.shiftKey)}
+        onMouseEnter={() => onPreview?.(asset)}
+        onMouseLeave={() => onPreview?.(null)}
+        onFocus={() => onPreview?.(asset)}
+        onBlur={() => onPreview?.(null)}
         className={tileClass}
         style={tileStyle}
       >
@@ -167,6 +174,10 @@ function AssetTile({
       className={tileClass}
       style={tileStyle}
       onClick={() => onOpen?.()}
+      onMouseEnter={() => onPreview?.(asset)}
+      onMouseLeave={() => onPreview?.(null)}
+      onFocus={() => onPreview?.(asset)}
+      onBlur={() => onPreview?.(null)}
     >
       {content}
     </Link>
@@ -271,6 +282,20 @@ export function TimelineView({
   }>({ year: null, monthLabel: null });
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const [hoverAsset, setHoverAsset] = useState<TimelineAssetDto | null>(null);
+  const hoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const previewAsset = useCallback((asset: TimelineAssetDto | null) => {
+    if (hoverClearTimer.current) {
+      clearTimeout(hoverClearTimer.current);
+      hoverClearTimer.current = null;
+    }
+    if (asset) {
+      setHoverAsset(asset);
+      return;
+    }
+    hoverClearTimer.current = setTimeout(() => setHoverAsset(null), 180);
+  }, []);
 
   const loadTimeline = useCallback(async (cursor?: string) => {
     const searchParams = new URLSearchParams({ limit: "80" });
@@ -806,7 +831,8 @@ export function TimelineView({
           </div>
         )}
 
-        <div ref={parentRef} className="h-full overflow-auto px-3 py-3 pr-8 pt-16">
+        <div className="relative flex min-h-0 flex-1">
+        <div ref={parentRef} className="h-full min-w-0 flex-1 overflow-auto px-3 py-3 pr-8 pt-16">
           <OnThisDayPanel
             groups={data.onThisDay}
             onOpen={rememberAssetOpen}
@@ -846,7 +872,15 @@ export function TimelineView({
                     </h3>
                   ) : null}
                   {item.type === "section" ? (
-                    <section className="pb-5">
+                    <section
+                      className="pb-5"
+                      onMouseEnter={() => {
+                        const geo = item.section.assets.find(
+                          (asset) => asset.location || asset.hasFlightPath,
+                        );
+                        if (geo) previewAsset(geo);
+                      }}
+                    >
                       <p className="mb-2.5 text-sm font-semibold text-foreground/90">
                         {item.section.dateLabel}
                       </p>
@@ -862,6 +896,7 @@ export function TimelineView({
                               quickSelect(asset.id, shiftKey)
                             }
                             onOpen={() => rememberAssetOpen(asset.id)}
+                            onPreview={previewAsset}
                           />
                         ))}
                       </div>
@@ -882,6 +917,32 @@ export function TimelineView({
               </Button>
             </div>
           ) : null}
+        </div>
+
+        <aside className="pointer-events-none absolute bottom-4 right-4 z-20 hidden w-56 xl:block">
+          <div
+            className={cn(
+              "pointer-events-auto overflow-hidden rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur transition duration-200",
+              hoverAsset ? "opacity-100" : "opacity-70",
+            )}
+            onMouseEnter={() => {
+              if (hoverAsset) previewAsset(hoverAsset);
+            }}
+            onMouseLeave={() => previewAsset(null)}
+          >
+            <TimelineHoverMiniMap
+              assetId={hoverAsset?.id ?? null}
+              location={hoverAsset?.location ?? null}
+              hasFlightPath={hoverAsset?.hasFlightPath}
+              className="aspect-square w-full"
+            />
+            <p className="truncate border-t border-border px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              {hoverAsset
+                ? hoverAsset.displayName
+                : "Hover media for map preview"}
+            </p>
+          </div>
+        </aside>
         </div>
 
         {scrubMarkers.length > 0 ? (

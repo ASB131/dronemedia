@@ -282,7 +282,10 @@ export function PublicProfileView({ username }: { username: string }) {
         series?: TelemetrySeriesPoint[];
       };
       if (cancelled) return;
-      setPreviewTelemetry({ flightPath: payload.flightPath });
+      setPreviewTelemetry({
+        flightPath: payload.flightPath,
+        homePoint: payload.homePoint ?? null,
+      });
       setPreviewSeries(payload.series ?? []);
     })();
     return () => {

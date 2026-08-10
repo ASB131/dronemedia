@@ -15,6 +15,7 @@ export type PointGeoJson = {
 
 export type TelemetryGeoJson = {
   flightPath: LineStringGeoJson | null;
+  homePoint: { lat: number; lng: number } | null;
 };
 
 export type TelemetrySeriesPoint = {
@@ -37,6 +38,7 @@ export async function getTelemetryGeoJsonForUser(
   const [row] = await db
     .select({
       pathJson: sql<string | null>`ST_AsGeoJSON(${flightTelemetry.flightPath})`,
+      homeJson: sql<string | null>`ST_AsGeoJSON(${flightTelemetry.homePoint})`,
     })
     .from(flightTelemetry)
     .innerJoin(assets, eq(assets.id, flightTelemetry.assetId))
@@ -51,10 +53,22 @@ export async function getTelemetryGeoJsonForUser(
 
   if (!row) return null;
 
+  let homePoint: { lat: number; lng: number } | null = null;
+  if (row.homeJson) {
+    const parsed = JSON.parse(row.homeJson) as PointGeoJson;
+    if (parsed?.type === "Point" && parsed.coordinates?.length >= 2) {
+      homePoint = {
+        lng: parsed.coordinates[0]!,
+        lat: parsed.coordinates[1]!,
+      };
+    }
+  }
+
   return {
     flightPath: row.pathJson
       ? (JSON.parse(row.pathJson) as LineStringGeoJson)
       : null,
+    homePoint,
   };
 }
 

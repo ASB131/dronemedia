@@ -806,3 +806,140 @@ export async function reassignAssetToFlight(
   }
   return { flightId: targetFlightId };
 }
+
+export type PhotoClipContextDto = {
+  videoId: string;
+  videoDisplayName: string;
+  seekSeconds: number;
+  match: "spatial" | "temporal";
+};
+
+/**
+ * For a photo on a flight, find the best sibling video clip and a seek time
+ * where the photo was likely taken (nearest path point, else capture-time delta).
+ */
+export async function getPhotoClipContextForUser(
+  userId: string,
+  photoId: string,
+): Promise<PhotoClipContextDto | null> {
+  const db = getWebDb();
+  const [photo] = await db
+    .select({
+      id: assets.id,
+      flightId: assets.flightId,
+      assetType: assets.assetType,
+      sequenceKind: assets.sequenceKind,
+      capturedAtOriginal: assets.capturedAtOriginal,
+      capturedAtOverride: assets.capturedAtOverride,
+      createdAt: assets.createdAt,
+      lat: sql<number | null>`ST_Y(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
+      lng: sql<number | null>`ST_X(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
+    })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.id, photoId),
+        eq(assets.userId, userId),
+        isNull(assets.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!photo?.flightId) return null;
+  const isStill =
+    photo.assetType === "photo" ||
+    (photo.assetType === "sequence" && photo.sequenceKind === "panorama");
+  if (!isStill) return null;
+
+  const videos = await db
+    .select({
+      id: assets.id,
+      displayName: assets.displayName,
+      capturedAtOriginal: assets.capturedAtOriginal,
+      capturedAtOverride: assets.capturedAtOverride,
+      createdAt: assets.createdAt,
+      durationSeconds: sql<number | null>`(
+        case
+          when ${assets.mediaMetadata} ? 'durationSeconds'
+          then (${assets.mediaMetadata}->>'durationSeconds')::float
+          else null
+        end
+      )`,
+    })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.flightId, photo.flightId),
+        eq(assets.userId, userId),
+        eq(assets.assetType, "video"),
+        isNull(assets.deletedAt),
+      ),
+    );
+
+  if (videos.length === 0) return null;
+
+  const photoCaptured = getEffectiveCaptureDate(photo).getTime();
+  const photoLoc =
+    photo.lat != null && photo.lng != null
+      ? { lat: photo.lat, lng: photo.lng }
+      : null;
+
+  let bestSpatial: PhotoClipContextDto | null = null;
+  let bestSpatialDist = Number.POSITIVE_INFINITY;
+
+  if (photoLoc) {
+    for (const video of videos) {
+      const points = await db
+        .select({
+          lat: sql<number>`ST_Y(${telemetryPoints.point})`,
+          lng: sql<number>`ST_X(${telemetryPoints.point})`,
+          recordedAt: telemetryPoints.recordedAt,
+        })
+        .from(telemetryPoints)
+        .where(eq(telemetryPoints.assetId, video.id))
+        .orderBy(telemetryPoints.sequenceIndex);
+
+      if (points.length === 0) continue;
+      const startMs = points[0]!.recordedAt.getTime();
+      for (const point of points) {
+        const dist = haversineMeters(photoLoc, {
+          lat: point.lat,
+          lng: point.lng,
+        });
+        if (dist < bestSpatialDist && dist <= 75) {
+          bestSpatialDist = dist;
+          bestSpatial = {
+            videoId: video.id,
+            videoDisplayName: video.displayName,
+            seekSeconds: Math.max(
+              0,
+              (point.recordedAt.getTime() - startMs) / 1000,
+            ),
+            match: "spatial",
+          };
+        }
+      }
+    }
+  }
+
+  if (bestSpatial) return bestSpatial;
+
+  for (const video of videos) {
+    const videoStart = getEffectiveCaptureDate(video).getTime();
+    const durationMs =
+      video.durationSeconds != null && Number.isFinite(video.durationSeconds)
+        ? Math.max(0, video.durationSeconds * 1000)
+        : 15 * 60 * 1000;
+    const delta = photoCaptured - videoStart;
+    if (delta >= -5_000 && delta <= durationMs + 5_000) {
+      return {
+        videoId: video.id,
+        videoDisplayName: video.displayName,
+        seekSeconds: Math.min(Math.max(delta / 1000, 0), durationMs / 1000),
+        match: "temporal",
+      };
+    }
+  }
+
+  return null;
+}

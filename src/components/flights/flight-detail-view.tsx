@@ -196,6 +196,7 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
         };
         setAssetTelemetry({
           flightPath: payload.flightPath,
+          homePoint: payload.homePoint ?? null,
         });
         setAssetSeries(payload.series ?? []);
       } else {
