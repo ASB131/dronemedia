@@ -43,8 +43,18 @@ export function getAdminSettingsView() {
 }
 
 export type AdminSettingsPatch = {
+  server?: { publicUrl?: string };
   users?: { inviteOnly?: boolean; defaultStorageQuotaBytes?: number };
   logging?: { level?: AppConfig["logging"]["level"] };
+  upload?: {
+    maxFileSizeBytes?: number;
+    chunkSizeBytes?: number;
+    incompleteUploadTtlHours?: number;
+  };
+  deduplication?: {
+    algorithm?: AppConfig["deduplication"]["algorithm"];
+    onDuplicate?: AppConfig["deduplication"]["onDuplicate"];
+  };
   bin?: { purgeAfterDays?: number };
   images?: {
     thumbnailMaxEdge?: number;
@@ -59,6 +69,10 @@ export type AdminSettingsPatch = {
   };
   jobs?: {
     concurrency?: Record<string, number>;
+    gates?: {
+      webTranscoding?: boolean;
+      panoramaStitch?: boolean;
+    };
   };
   theme?: { default?: AppConfig["theme"]["default"]; accent?: string };
   backup?: {
@@ -72,6 +86,12 @@ export type AdminSettingsPatch = {
     hls?: {
       segmentDurationSeconds?: number;
       playlistType?: "vod" | "event";
+      heights?: number[];
+    };
+    sequences?: {
+      fps?: number;
+      fullResCrf?: number;
+      fullResPreset?: string;
     };
   };
   notifications?: {

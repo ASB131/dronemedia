@@ -12,6 +12,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
+  server: z
+    .object({
+      publicUrl: z.string().url().optional(),
+    })
+    .optional(),
   users: z
     .object({
       inviteOnly: z.boolean().optional(),
@@ -23,6 +28,19 @@ const patchSchema = z.object({
       level: z
         .enum(["trace", "debug", "info", "warn", "error", "fatal"])
         .optional(),
+    })
+    .optional(),
+  upload: z
+    .object({
+      maxFileSizeBytes: z.number().int().positive().optional(),
+      chunkSizeBytes: z.number().int().positive().optional(),
+      incompleteUploadTtlHours: z.number().int().positive().optional(),
+    })
+    .optional(),
+  deduplication: z
+    .object({
+      algorithm: z.enum(["xxhash", "sha256"]).optional(),
+      onDuplicate: z.enum(["reject", "flag"]).optional(),
     })
     .optional(),
   bin: z
@@ -48,6 +66,12 @@ const patchSchema = z.object({
   jobs: z
     .object({
       concurrency: z.record(z.string(), z.number().int().positive()).optional(),
+      gates: z
+        .object({
+          webTranscoding: z.boolean().optional(),
+          panoramaStitch: z.boolean().optional(),
+        })
+        .optional(),
     })
     .optional(),
   theme: z
@@ -81,6 +105,13 @@ const patchSchema = z.object({
           segmentDurationSeconds: z.number().int().positive().optional(),
           playlistType: z.enum(["vod", "event"]).optional(),
           heights: z.array(z.number().int().positive()).min(1).optional(),
+        })
+        .optional(),
+      sequences: z
+        .object({
+          fps: z.number().positive().optional(),
+          fullResCrf: z.number().int().min(1).max(51).optional(),
+          fullResPreset: z.string().optional(),
         })
         .optional(),
     })

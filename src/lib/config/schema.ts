@@ -139,6 +139,16 @@ export const configSchema = z.object({
       attempts: z.coerce.number().int().positive(),
       backoffMs: z.coerce.number().int().positive(),
     }),
+    /** Global admin gates for heavy post-import work (all users). */
+    gates: z
+      .object({
+        webTranscoding: z.boolean().default(true),
+        panoramaStitch: z.boolean().default(true),
+      })
+      .default({
+        webTranscoding: true,
+        panoramaStitch: true,
+      }),
   }),
   theme: z.object({
     default: z.enum(["light", "dark", "system"]).default("system"),

@@ -303,11 +303,15 @@ async function attachSidecarFiles(params: {
       "@/lib/assets/playback-flags"
     );
     await setAssetPlaybackFlags(assetId, { hasProxy: true, hasHls: false });
-    await getWebTranscodingQueue().add(
-      "webTranscoding",
-      { userId, assetId },
-      jobOpts,
-    );
+    const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+    const { JOB_NAMES } = await import("@/lib/jobs/types");
+    if (isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+      await getWebTranscodingQueue().add(
+        "webTranscoding",
+        { userId, assetId },
+        jobOpts,
+      );
+    }
   }
 
   return { assetId, fileIds: groupFiles.map((file) => file.id) };

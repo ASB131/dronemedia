@@ -201,18 +201,115 @@ export function AdminCachePanel() {
 
 export function AdminJobsPanel() {
   const [failures, setFailures] = useState<JobFailure[]>([]);
+  const [gates, setGates] = useState({
+    webTranscoding: true,
+    panoramaStitch: true,
+  });
+  const [status, setStatus] = useState<{
+    totals: {
+      waiting: number;
+      active: number;
+      delayed: number;
+      failed: number;
+    };
+    queues: Array<{
+      name: string;
+      label: string;
+      paused: boolean;
+      counts: {
+        waiting: number;
+        active: number;
+        delayed: number;
+        failed: number;
+      };
+    }>;
+    active: Array<{
+      id: string;
+      queueLabel: string;
+      assetName: string | null;
+      userId: string | null;
+      state: string;
+    }>;
+    waiting: Array<{
+      id: string;
+      queueLabel: string;
+      assetName: string | null;
+      userId: string | null;
+    }>;
+  } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [busyGate, setBusyGate] = useState<string | null>(null);
 
   async function reload() {
-    const response = await fetch("/api/admin/ops?view=jobs");
-    if (!response.ok) return;
-    const payload = (await response.json()) as { failures: JobFailure[] };
+    const response = await fetch("/api/admin/jobs");
+    if (!response.ok) {
+      // Fallback to legacy failed-jobs endpoint
+      const legacy = await fetch("/api/admin/ops?view=jobs");
+      if (!legacy.ok) return;
+      const payload = (await legacy.json()) as { failures: JobFailure[] };
+      setFailures(payload.failures);
+      return;
+    }
+    const payload = (await response.json()) as {
+      failures: JobFailure[];
+      gates: { webTranscoding: boolean; panoramaStitch: boolean };
+      status: NonNullable<typeof status>;
+    };
     setFailures(payload.failures);
+    setGates(payload.gates);
+    setStatus(payload.status);
   }
 
   useEffect(() => {
     void reload();
+    const timer = window.setInterval(() => void reload(), 8000);
+    return () => window.clearInterval(timer);
   }, []);
+
+  async function setGate(
+    gate: "webTranscoding" | "panoramaStitch",
+    enabled: boolean,
+  ) {
+    setMessage(null);
+    setBusyGate(gate);
+    const response = await fetch("/api/admin/jobs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gate, enabled }),
+    });
+    setBusyGate(null);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setMessage(payload?.error ?? "Failed to update job gate");
+      return;
+    }
+    const payload = (await response.json()) as {
+      backfilled?: number;
+      enabled: boolean;
+      failures: JobFailure[];
+      gates: { webTranscoding: boolean; panoramaStitch: boolean };
+      status: NonNullable<typeof status>;
+    };
+    setFailures(payload.failures);
+    setGates(payload.gates);
+    setStatus(payload.status);
+    const label = gate === "webTranscoding" ? "Transcoding" : "Panorama stitch";
+    if (payload.enabled) {
+      setMessage(
+        `${label} enabled${
+          payload.backfilled
+            ? ` — queued ${payload.backfilled} job${payload.backfilled === 1 ? "" : "s"}`
+            : ""
+        }.`,
+      );
+    } else {
+      setMessage(
+        `${label} paused — new uploads will skip this step until re-enabled.`,
+      );
+    }
+  }
 
   async function act(failureId: string, action: "resolve" | "retry") {
     setMessage(null);
@@ -230,45 +327,175 @@ export function AdminJobsPanel() {
   }
 
   return (
-    <div className="space-y-3">
-      <h2 className="text-sm font-semibold">Failed jobs</h2>
-      {message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
-      <ul className="space-y-2">
-        {failures.map((failure) => (
-          <li
-            key={failure.id}
-            className="rounded-xl border border-border p-3 text-sm"
-          >
-            <p className="font-medium">{failure.jobType}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {failure.errorDetail}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Attempts: {failure.attemptCount} ·{" "}
-              {new Date(failure.createdAt).toLocaleString()}
-            </p>
-            <div className="mt-2 flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void act(failure.id, "retry")}
-              >
-                Retry
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void act(failure.id, "resolve")}
-              >
-                Dismiss
-              </Button>
-            </div>
-          </li>
-        ))}
-        {failures.length === 0 ? (
-          <li className="text-sm text-muted-foreground">No unresolved failures.</li>
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Job gates</h2>
+        <p className="text-xs text-muted-foreground">
+          Pause heavy post-import work during bulk uploads. Applies to all
+          users. Enabling queues every asset that still needs that job.
+        </p>
+        {message ? (
+          <p className="text-xs text-muted-foreground">{message}</p>
         ) : null}
-      </ul>
+        <div className="space-y-3 rounded-xl border border-border p-4">
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span>
+              <span className="font-medium">Transcoding</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                HLS / proxy for videos and sequences
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={gates.webTranscoding}
+              disabled={busyGate !== null}
+              onChange={(event) =>
+                void setGate("webTranscoding", event.target.checked)
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span>
+              <span className="font-medium">Panorama stitch</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Equirect preview for panorama sequences
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={gates.panoramaStitch}
+              disabled={busyGate !== null}
+              onChange={(event) =>
+                void setGate("panoramaStitch", event.target.checked)
+              }
+            />
+          </label>
+        </div>
+      </section>
+
+      {status ? (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">Global queue</h2>
+          <p className="text-xs text-muted-foreground">
+            Active {status.totals.active} · Waiting {status.totals.waiting} ·
+            Delayed {status.totals.delayed} · Failed {status.totals.failed}
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[32rem] text-left text-xs">
+              <thead className="border-b border-border bg-muted/40 text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Queue</th>
+                  <th className="px-3 py-2 font-medium">Waiting</th>
+                  <th className="px-3 py-2 font-medium">Active</th>
+                  <th className="px-3 py-2 font-medium">Failed</th>
+                  <th className="px-3 py-2 font-medium">Paused</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.queues.map((queue) => (
+                  <tr key={queue.name} className="border-b border-border/60">
+                    <td className="px-3 py-2 font-medium">{queue.label}</td>
+                    <td className="px-3 py-2">{queue.counts.waiting}</td>
+                    <td className="px-3 py-2">{queue.counts.active}</td>
+                    <td className="px-3 py-2">{queue.counts.failed}</td>
+                    <td className="px-3 py-2">
+                      {queue.paused ? "Yes" : "No"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Active (all users)
+              </p>
+              <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
+                {status.active.slice(0, 40).map((job) => (
+                  <li key={job.id}>
+                    {job.queueLabel}: {job.assetName ?? job.id.slice(0, 8)}
+                    {job.userId ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {job.userId.slice(0, 8)}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+                {status.active.length === 0 ? (
+                  <li className="text-muted-foreground">None</li>
+                ) : null}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Waiting (all users)
+              </p>
+              <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
+                {status.waiting.slice(0, 40).map((job) => (
+                  <li key={job.id}>
+                    {job.queueLabel}: {job.assetName ?? job.id.slice(0, 8)}
+                    {job.userId ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {job.userId.slice(0, 8)}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+                {status.waiting.length === 0 ? (
+                  <li className="text-muted-foreground">None</li>
+                ) : null}
+              </ul>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Failed jobs</h2>
+        <ul className="space-y-2">
+          {failures.map((failure) => (
+            <li
+              key={failure.id}
+              className="rounded-xl border border-border p-3 text-sm"
+            >
+              <p className="font-medium">{failure.jobType}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {failure.errorDetail}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Attempts: {failure.attemptCount} ·{" "}
+                {new Date(failure.createdAt).toLocaleString()}
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void act(failure.id, "retry")}
+                >
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void act(failure.id, "resolve")}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </li>
+          ))}
+          {failures.length === 0 ? (
+            <li className="text-sm text-muted-foreground">
+              No unresolved failures.
+            </li>
+          ) : null}
+        </ul>
+      </section>
     </div>
   );
 }

@@ -125,6 +125,11 @@ export async function enqueuePanoramaRestitch(
   assetId: string,
 ) {
   const config = loadConfig();
+  const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+  const { JOB_NAMES } = await import("@/lib/jobs/types");
+  if (!isJobGateEnabled(JOB_NAMES.PANORAMA_STITCH, true)) {
+    return;
+  }
   await clearPanoramaEquirectCache(userId, assetId);
   await getPanoramaStitchQueue().add(
     "panoramaStitch",

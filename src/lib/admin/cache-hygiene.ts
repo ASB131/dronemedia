@@ -209,6 +209,11 @@ export async function purgeAssetCacheDerivatives(
 
   let queued = 0;
   if (options?.requeue) {
+    const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+    const { JOB_NAMES } = await import("@/lib/jobs/types");
+    if (!isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+      return { purged, queued: 0 };
+    }
     const queue = getWebTranscodingQueue();
     const config = loadConfig();
     for (const row of rows) {

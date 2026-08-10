@@ -206,6 +206,10 @@ function MetaSection({
 export function AssetDetailView({ assetId }: { assetId: string }) {
   const router = useRouter();
   const [asset, setAsset] = useState<AssetDetailDto | null>(null);
+  const [jobGates, setJobGates] = useState<{
+    webTranscoding: boolean;
+    panoramaStitch: boolean;
+  } | null>(null);
   const [neighbors, setNeighbors] = useState<AssetNeighborsDto | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryGeoJson | null>(null);
   const [series, setSeries] = useState<TelemetrySeriesPoint[]>([]);
@@ -367,6 +371,17 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   }, [assetId]);
 
   useEffect(() => {
+    void (async () => {
+      const response = await fetch("/api/jobs/gates");
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        gates: { webTranscoding: boolean; panoramaStitch: boolean };
+      };
+      setJobGates(payload.gates);
+    })();
+  }, []);
+
+  useEffect(() => {
     if (!neighbors) return;
     return runWhenIdle(() => {
       if (neighbors.previous) prefetchAsset(neighbors.previous.id);
@@ -381,7 +396,10 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     const isPanorama = asset.sequenceKind === "panorama";
     if (isPanorama) {
       if (asset.hasPanoPreview) return;
-    } else if (asset.hasHls || asset.hasProxy || asset.hasLrf) {
+      if (jobGates && !jobGates.panoramaStitch) return;
+    } else if (asset.hasHls || asset.hasProxy) {
+      return;
+    } else if (jobGates && !jobGates.webTranscoding) {
       return;
     }
 
@@ -395,7 +413,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     }, 4000);
 
     return () => window.clearInterval(timer);
-  }, [asset, assetId]);
+  }, [asset, assetId, jobGates]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -578,10 +596,13 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     : asset.assetType === "photo" ||
       asset.hasHls ||
       asset.hasProxy ||
-      asset.hasLrf ||
       (isPanorama && asset.hasPanoPreview);
+  /** In-player Source only after a streaming derivative exists — never as fallback. */
+  const allowSourcePlayback = asset.hasHls || asset.hasProxy;
   const mediaUrl = `/api/assets/${asset.id}/original`;
-  const sourceUrl = `/api/assets/${asset.id}/original?playback=source`;
+  const sourceUrl = allowSourcePlayback
+    ? `/api/assets/${asset.id}/original?playback=source`
+    : null;
   const panoUrl = `/api/assets/${asset.id}/pano`;
   const panoFullUrl = `${panoUrl}?full=1`;
   const hlsUrl = asset.hasHls
@@ -822,12 +843,22 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
               <p className="text-sm font-medium text-white/90">
-                {isPanorama ? "Stitching panorama…" : "Preparing playback…"}
+                {isPanorama
+                  ? jobGates && !jobGates.panoramaStitch
+                    ? "Panorama preview unavailable"
+                    : "Stitching panorama…"
+                  : jobGates && !jobGates.webTranscoding
+                    ? "Streaming preview unavailable"
+                    : "Preparing playback…"}
               </p>
               <p className="max-w-sm text-xs text-white/60">
                 {isPanorama
-                  ? "Tiles are being stitched into a 360° preview. This page will refresh automatically when ready."
-                  : "A streaming preview is being generated. You can choose Source quality after it is ready if you want the original file. This page will refresh automatically when ready."}
+                  ? jobGates && !jobGates.panoramaStitch
+                    ? "An administrator has paused panorama stitching. A 360° preview will appear after stitching is enabled and this file is processed. Source playback in the player is disabled until then — you can still download the original."
+                    : "Tiles are being stitched into a 360° preview. This page will refresh automatically when ready."
+                  : jobGates && !jobGates.webTranscoding
+                    ? "An administrator has paused transcoding (or a preview has not been generated yet). Source playback in the player is disabled until a streaming preview exists — you can still download the original file."
+                    : "A streaming preview is being generated. This page will refresh automatically when ready. Source quality is available in the player after the preview exists."}
               </p>
             </div>
           )}

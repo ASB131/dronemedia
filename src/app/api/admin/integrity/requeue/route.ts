@@ -56,6 +56,17 @@ export async function POST(request: Request) {
         ),
       );
     } else {
+      const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+      const { JOB_NAMES } = await import("@/lib/jobs/types");
+      if (!isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+        return NextResponse.json(
+          {
+            error:
+              "Transcoding is paused by an administrator. Enable it under Admin → Jobs.",
+          },
+          { status: 409 },
+        );
+      }
       const queue = getWebTranscodingQueue();
       await Promise.all(
         eligible.map((asset) =>

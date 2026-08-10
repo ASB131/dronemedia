@@ -72,10 +72,14 @@ export async function PATCH(request: Request) {
       payload?.userId &&
       payload?.assetId
     ) {
-      await getWebTranscodingQueue().add("webTranscoding", {
-        userId: payload.userId,
-        assetId: payload.assetId,
-      });
+      const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+      const { JOB_NAMES } = await import("@/lib/jobs/types");
+      if (isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+        await getWebTranscodingQueue().add("webTranscoding", {
+          userId: payload.userId,
+          assetId: payload.assetId,
+        });
+      }
     }
 
     await resolveJobFailure(body.failureId);

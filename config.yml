@@ -122,6 +122,10 @@ jobs:
   retry:
     attempts: 3
     backoffMs: 5000
+  # Admin can pause these for bulk imports (Admin → Jobs). Default: on.
+  gates:
+    webTranscoding: true
+    panoramaStitch: true
 
 theme:
   default: system # light | dark | system

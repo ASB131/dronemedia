@@ -144,23 +144,33 @@ function belongsToUser(job: Job, userId: string) {
 async function collectJobs(
   queueName: JobName,
   types: JobType[],
-  userId: string,
+  userId: string | null,
   limit: number,
 ) {
   const queue = getQueueByName(queueName);
   const jobs = await queue.getJobs(types, 0, limit);
   return jobs
-    .filter((job): job is Job => Boolean(job) && belongsToUser(job, userId))
+    .filter((job): job is Job => {
+      if (!job) return false;
+      if (userId == null) return true;
+      return belongsToUser(job, userId);
+    })
     .map((job) => ({ queue: queueName, job }));
 }
 
-export async function getJobsStatusForUser(
-  userId: string,
+async function buildJobsStatus(
+  userId: string | null,
+  limits: {
+    active: number;
+    waiting: number;
+    delayed: number;
+    failed: number;
+    completed: number;
+  },
 ): Promise<JobsStatusDto> {
   const queues: QueueSummaryDto[] = [];
   let totals = emptyCounts();
 
-  // Fetch all queue counts in parallel first (fast overview).
   const countResults = await Promise.all(
     ALL_QUEUE_NAMES.map(async (name) => {
       const queue = getQueueByName(name);
@@ -200,11 +210,16 @@ export async function getJobsStatusForUser(
   const listResults = await Promise.all(
     ALL_QUEUE_NAMES.map(async (name) => {
       const [active, waiting, delayed, failed, completed] = await Promise.all([
-        collectJobs(name, ["active"], userId, 50),
-        collectJobs(name, ["waiting", "wait", "prioritized"], userId, 50),
-        collectJobs(name, ["delayed"], userId, 50),
-        collectJobs(name, ["failed"], userId, 50),
-        collectJobs(name, ["completed"], userId, 30),
+        collectJobs(name, ["active"], userId, limits.active),
+        collectJobs(
+          name,
+          ["waiting", "wait", "prioritized"],
+          userId,
+          limits.waiting,
+        ),
+        collectJobs(name, ["delayed"], userId, limits.delayed),
+        collectJobs(name, ["failed"], userId, limits.failed),
+        collectJobs(name, ["completed"], userId, limits.completed),
       ]);
       return { active, waiting, delayed, failed, completed };
     }),
@@ -255,29 +270,52 @@ export async function getJobsStatusForUser(
     queues,
     active: await Promise.all(
       activeJobs
-        .slice(0, 80)
+        .slice(0, limits.active)
         .map(({ queue, job }) => mapJob(queue, job, "active", assetNames)),
     ),
     waiting: await Promise.all(
       waitingJobs
-        .slice(0, 80)
+        .slice(0, limits.waiting)
         .map(({ queue, job }) => mapJob(queue, job, "waiting", assetNames)),
     ),
     delayed: await Promise.all(
       delayedJobs
-        .slice(0, 50)
+        .slice(0, limits.delayed)
         .map(({ queue, job }) => mapJob(queue, job, "delayed", assetNames)),
     ),
     failed: await Promise.all(
       failedJobs
-        .slice(0, 50)
+        .slice(0, limits.failed)
         .map(({ queue, job }) => mapJob(queue, job, "failed", assetNames)),
     ),
     completed: await Promise.all(
       completedJobs
-        .slice(0, 80)
+        .slice(0, limits.completed)
         .map(({ queue, job }) => mapJob(queue, job, "completed", assetNames)),
     ),
     fetchedAt: new Date().toISOString(),
   };
+}
+
+export async function getJobsStatusForUser(
+  userId: string,
+): Promise<JobsStatusDto> {
+  return buildJobsStatus(userId, {
+    active: 80,
+    waiting: 80,
+    delayed: 50,
+    failed: 50,
+    completed: 80,
+  });
+}
+
+/** Admin: all users, larger lists. */
+export async function getJobsStatusGlobal(): Promise<JobsStatusDto> {
+  return buildJobsStatus(null, {
+    active: 150,
+    waiting: 200,
+    delayed: 100,
+    failed: 100,
+    completed: 100,
+  });
 }

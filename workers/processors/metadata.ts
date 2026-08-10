@@ -607,46 +607,52 @@ export function createMetadataWorker(connection: { url: string }) {
       }
 
       if (asset.assetType === "sequence" && asset.sequenceKind === "panorama") {
-        await getPanoramaStitchQueue().add(
-          "panoramaStitch",
-          { userId, assetId },
-          {
-            attempts: config.jobs.retry.attempts,
-            backoff: {
-              type: "exponential",
-              delay: config.jobs.retry.backoffMs,
+        const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+        if (isJobGateEnabled(JOB_NAMES.PANORAMA_STITCH, true)) {
+          await getPanoramaStitchQueue().add(
+            "panoramaStitch",
+            { userId, assetId },
+            {
+              attempts: config.jobs.retry.attempts,
+              backoff: {
+                type: "exponential",
+                delay: config.jobs.retry.backoffMs,
+              },
             },
-          },
-        );
-        await publishJobEvent({
-          userId,
-          jobType: JOB_NAMES.PANORAMA_STITCH,
-          assetId,
-          status: "queued",
-          timestamp: new Date().toISOString(),
-        });
+          );
+          await publishJobEvent({
+            userId,
+            jobType: JOB_NAMES.PANORAMA_STITCH,
+            assetId,
+            status: "queued",
+            timestamp: new Date().toISOString(),
+          });
+        }
       } else if (
         asset.assetType === "video" ||
         asset.assetType === "sequence"
       ) {
-        await getWebTranscodingQueue().add(
-          "webTranscoding",
-          { userId, assetId },
-          {
-            attempts: config.jobs.retry.attempts,
-            backoff: {
-              type: "exponential",
-              delay: config.jobs.retry.backoffMs,
+        const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+        if (isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+          await getWebTranscodingQueue().add(
+            "webTranscoding",
+            { userId, assetId },
+            {
+              attempts: config.jobs.retry.attempts,
+              backoff: {
+                type: "exponential",
+                delay: config.jobs.retry.backoffMs,
+              },
             },
-          },
-        );
-        await publishJobEvent({
-          userId,
-          jobType: JOB_NAMES.WEB_TRANSCODING,
-          assetId,
-          status: "queued",
-          timestamp: new Date().toISOString(),
-        });
+          );
+          await publishJobEvent({
+            userId,
+            jobType: JOB_NAMES.WEB_TRANSCODING,
+            assetId,
+            status: "queued",
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
 
       await publishJobEvent({

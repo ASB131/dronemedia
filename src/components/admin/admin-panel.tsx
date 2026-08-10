@@ -24,7 +24,7 @@ const tabs = [
   { id: "cache", label: "Storage" },
   { id: "backup", label: "Backup" },
   { id: "audit", label: "Audit log" },
-  { id: "jobs", label: "Failed jobs" },
+  { id: "jobs", label: "Jobs" },
 ] as const;
 
 export function AdminPanel() {

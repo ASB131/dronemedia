@@ -183,17 +183,21 @@ export async function updateOwnedAsset(
       "@/lib/assets/playback-flags"
     );
     await clearAssetPlaybackFlags(assetId);
-    await getWebTranscodingQueue().add(
-      "webTranscoding",
-      { userId, assetId },
-      {
-        attempts: config.jobs.retry.attempts,
-        backoff: {
-          type: "exponential",
-          delay: config.jobs.retry.backoffMs,
+    const { isJobGateEnabled } = await import("@/lib/jobs/gates");
+    const { JOB_NAMES } = await import("@/lib/jobs/types");
+    if (isJobGateEnabled(JOB_NAMES.WEB_TRANSCODING, true)) {
+      await getWebTranscodingQueue().add(
+        "webTranscoding",
+        { userId, assetId },
+        {
+          attempts: config.jobs.retry.attempts,
+          backoff: {
+            type: "exponential",
+            delay: config.jobs.retry.backoffMs,
+          },
         },
-      },
-    );
+      );
+    }
   }
 
   if (row && lutChanged) {

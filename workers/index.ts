@@ -44,6 +44,14 @@ async function main() {
   await scheduleIntegrityCheck(connection);
   await scheduleDatabaseBackup(connection);
 
+  try {
+    const { syncGateQueuePausedState } = await import("@/lib/jobs/gates");
+    await syncGateQueuePausedState();
+    logger.info("Synced job gate pause state from config");
+  } catch (error) {
+    logger.warn({ err: error }, "Could not sync job gate pause state");
+  }
+
   const workers = [
     createDedupWorker(connection),
     createThumbnailsWorker(connection),

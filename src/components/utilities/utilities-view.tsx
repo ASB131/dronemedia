@@ -100,6 +100,14 @@ export function UtilitiesView() {
   >({});
   const [busyLocationId, setBusyLocationId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobsStatusDto | null>(null);
+  const [deferredJobs, setDeferredJobs] = useState<
+    Array<{
+      assetId: string;
+      assetName: string;
+      job: string;
+      reason: string;
+    }>
+  >([]);
   const [jobSection, setJobSection] = useState<JobSection>("active");
   const [jobsLive, setJobsLive] = useState(false);
   const [jobsRefreshing, setJobsRefreshing] = useState(false);
@@ -131,8 +139,17 @@ export function UtilitiesView() {
         if (!options?.quiet) setMessage("Failed to load jobs");
         return;
       }
-      const payload = (await response.json()) as { jobs: JobsStatusDto };
+      const payload = (await response.json()) as {
+        jobs: JobsStatusDto;
+        deferred?: Array<{
+          assetId: string;
+          assetName: string;
+          job: string;
+          reason: string;
+        }>;
+      };
       setJobs(payload.jobs);
+      setDeferredJobs(payload.deferred ?? []);
       if (!jobSectionTouched.current) {
         if (payload.jobs.active.length > 0) setJobSection("active");
         else if (payload.jobs.waiting.length > 0) setJobSection("waiting");
@@ -987,6 +1004,36 @@ export function UtilitiesView() {
               <p className="text-sm text-muted-foreground">No job data</p>
             ) : (
               <>
+                {deferredJobs.length > 0 ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+                    <h3 className="text-sm font-semibold">
+                      Waiting to process ({deferredJobs.length})
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      These finished import but a heavy job is paused by an
+                      administrator. They will queue automatically when the
+                      gate is turned back on.
+                    </p>
+                    <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto text-sm">
+                      {deferredJobs.map((item) => (
+                        <li
+                          key={`${item.job}-${item.assetId}`}
+                          className="flex flex-wrap items-baseline justify-between gap-2"
+                        >
+                          <Link
+                            href={`/assets/${item.assetId}`}
+                            className="font-medium hover:underline"
+                          >
+                            {item.assetName}
+                          </Link>
+                          <span className="text-xs text-muted-foreground">
+                            {item.reason}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   {(
                     [

@@ -29,8 +29,12 @@ export async function GET(request: Request) {
     }
 
     if (view === "jobs") {
-      const jobs = await getJobsStatusForUser(session.user.id);
-      return NextResponse.json({ jobs });
+      const { listDeferredJobsForUser } = await import("@/lib/jobs/gates");
+      const [jobs, deferred] = await Promise.all([
+        getJobsStatusForUser(session.user.id),
+        listDeferredJobsForUser(session.user.id),
+      ]);
+      return NextResponse.json({ jobs, deferred });
     }
 
     if (view === "location") {

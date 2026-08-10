@@ -55,9 +55,11 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 
 - Chunked uploads with basename grouping (video + SRT + LRF, hyperlapse / panorama folders)
 - Timeline, map, flights, albums, drones, favorites, and bin
-- HLS adaptive playback from cache; **Source** plays the original from media storage
-- Photo **Web** previews on cache; full originals for Source / download
+- HLS adaptive playback from cache; **Source** in the player only after a streaming preview exists (download always available)
+- Photo **Web** previews on cache; full originals for download
 - Community profiles and a shared public map
+- Admin: pause/enable heavy jobs (transcoding, panorama stitch) for bulk imports; enabling backfills media still missing those jobs
+- Operator settings editable in **Admin → Settings** (upload limits, HLS ladder, quotas, and more)
 - Admin: users, invites, integrity, storage, backups, failed jobs
 
 ---
@@ -72,8 +74,10 @@ AGPL-3.0 — see [LICENSE](./LICENSE).
 - **Playback** — HLS adaptive streaming (1080p / 1440p / Auto) from regenerable cache; **Source** plays the original from media storage
 - **Photos** — in-app **Web** preview from cache; **Source** / download use full originals
 - **Community** — discover public profiles and a shared map (`/community`); open media on `/u/{username}`
-- **Admin** — users, invites, integrity, storage report, settings, backups, failed jobs
+- **Admin** — users, invites, integrity, storage report, settings, backups, failed jobs; **Jobs** tab to pause/enable transcoding (and panorama stitch) globally, view all-users queues, and backfill when re-enabled
 - **Upload** — chunked resumable uploads with basename grouping (MP4 + SRT + LRF)
+
+While transcoding is paused, Live Processing finishes after metadata (no Transcoding spam). Users see deferred items under **Utilities → Jobs** as “Waiting to transcode.” Videos without a streaming preview show a status message instead of playing Source in the player.
 
 There is **no** legacy share-link / “Shared inbox” flow. Visibility for others is via **Community** and assets marked public on your profile.
 

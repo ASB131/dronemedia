@@ -6,22 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type SettingsView = {
+  server: { host: string; port: number; publicUrl: string };
   users: { inviteOnly: boolean; defaultStorageQuotaBytes: number };
   logging: { level: string };
+  upload: {
+    maxFileSizeBytes: number;
+    chunkSizeBytes: number;
+    incompleteUploadTtlHours: number;
+  };
+  deduplication: { algorithm: string; onDuplicate: string };
   bin: { purgeAfterDays: number };
-  images: { thumbnailMaxEdge: number; thumbnailQuality: number };
+  images: {
+    thumbnailMaxEdge: number;
+    thumbnailQuality: number;
+    webMaxEdge?: number;
+    webQuality?: number;
+  };
   nightly: {
     binCleanupCron: string;
     orphanUploadCleanupCron: string;
     integrityCheckCron: string;
   };
-  jobs: { concurrency: Record<string, number> };
+  jobs: {
+    concurrency: Record<string, number>;
+    gates?: { webTranscoding: boolean; panoramaStitch: boolean };
+  };
   theme: { default: "light" | "dark" | "system"; accent?: string };
   backup?: { enabled: boolean; cron: string; retainDays: number };
   transcoding: {
     hwAccel: "none" | "qsv" | "nvenc" | "vaapi";
     proxy: { maxHeight: number; videoCodec: string; audioCodec: string };
-    hls: { segmentDurationSeconds: number; playlistType: "vod" | "event" };
+    hls: {
+      segmentDurationSeconds: number;
+      playlistType: "vod" | "event";
+      heights?: number[];
+    };
+    sequences?: { fps: number; fullResCrf: number; fullResPreset: string };
   };
   notifications: {
     sse: { enabled: boolean; heartbeatIntervalSeconds: number };
@@ -63,6 +83,9 @@ export function AdminSettingsPanel() {
   const [binCron, setBinCron] = useState("0 3 * * *");
   const [orphanCron, setOrphanCron] = useState("0 * * * *");
   const [integrityCron, setIntegrityCron] = useState("0 4 * * 0");
+  const [publicUrl, setPublicUrl] = useState("");
+  const [maxFileGb, setMaxFileGb] = useState("80");
+  const [hlsHeights, setHlsHeights] = useState("1080,1440");
   const [concurrencyDraft, setConcurrencyDraft] = useState<Record<string, string>>(
     {},
   );
@@ -86,6 +109,9 @@ export function AdminSettingsPanel() {
     setBinCron(view.nightly?.binCleanupCron ?? "0 3 * * *");
     setOrphanCron(view.nightly?.orphanUploadCleanupCron ?? "0 * * * *");
     setIntegrityCron(view.nightly?.integrityCheckCron ?? "0 4 * * 0");
+    setPublicUrl(view.server?.publicUrl ?? "");
+    setMaxFileGb(String(gbFromBytes(view.upload?.maxFileSizeBytes ?? 80 * 1024 ** 3)));
+    setHlsHeights((view.transcoding.hls.heights ?? [1080, 1440]).join(","));
     const nextConcurrency: Record<string, string> = {};
     for (const [key, value] of Object.entries(view.jobs?.concurrency ?? {})) {
       nextConcurrency[key] = String(value);
@@ -139,6 +165,76 @@ export function AdminSettingsPanel() {
     <div className="space-y-6">
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+
+      <section className="space-y-3 rounded-xl border border-border p-4">
+        <h2 className="text-sm font-semibold">Server</h2>
+        <p className="text-xs text-muted-foreground">
+          Public URL used for auth callbacks. In Docker, PUBLIC_URL env usually
+          overrides this after restart.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-[16rem] flex-1 text-sm">
+            Public URL
+            <Input
+              className="mt-1"
+              value={publicUrl}
+              onChange={(event) => setPublicUrl(event.target.value)}
+            />
+          </label>
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => void save({ server: { publicUrl } })}
+          >
+            Save URL
+          </Button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border p-4">
+        <h2 className="text-sm font-semibold">Upload</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            Max file size (GB)
+            <Input
+              className="mt-1 w-28"
+              value={maxFileGb}
+              onChange={(event) => setMaxFileGb(event.target.value)}
+            />
+          </label>
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              void save({
+                upload: {
+                  maxFileSizeBytes: bytesFromGb(Number(maxFileGb)),
+                },
+              })
+            }
+          >
+            Save
+          </Button>
+        </div>
+        <label className="flex flex-col gap-1 text-sm">
+          On duplicate
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2"
+            value={settings.deduplication.onDuplicate}
+            disabled={busy}
+            onChange={(event) =>
+              void save({
+                deduplication: {
+                  onDuplicate: event.target.value as "reject" | "flag",
+                },
+              })
+            }
+          >
+            <option value="flag">Flag (keep both)</option>
+            <option value="reject">Reject upload</option>
+          </select>
+        </label>
+      </section>
 
       <section className="space-y-3 rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold">Users</h2>
@@ -472,6 +568,14 @@ export function AdminSettingsPanel() {
               onChange={(event) => setSegmentSeconds(event.target.value)}
             />
           </label>
+          <label className="text-sm">
+            HLS heights (comma-separated)
+            <Input
+              className="mt-1 w-40"
+              value={hlsHeights}
+              onChange={(event) => setHlsHeights(event.target.value)}
+            />
+          </label>
           <Button
             size="sm"
             disabled={busy}
@@ -479,7 +583,13 @@ export function AdminSettingsPanel() {
               void save({
                 transcoding: {
                   proxy: { maxHeight: Number(maxHeight) },
-                  hls: { segmentDurationSeconds: Number(segmentSeconds) },
+                  hls: {
+                    segmentDurationSeconds: Number(segmentSeconds),
+                    heights: hlsHeights
+                      .split(",")
+                      .map((part) => Number(part.trim()))
+                      .filter((n) => Number.isFinite(n) && n > 0),
+                  },
                 },
               })
             }
@@ -487,6 +597,9 @@ export function AdminSettingsPanel() {
             Save
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Pause/enable Transcoding and Panorama stitch under Admin → Jobs.
+        </p>
       </section>
 
       <section className="space-y-3 rounded-xl border border-border p-4">
