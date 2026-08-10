@@ -36,7 +36,7 @@ export function MissingTelemetryCallout({
     items.push({
       key: "no-srt",
       title: "No SRT telemetry",
-      body: "Upload a matching .srt (same basename as the video) to plot the flight path and unlock the live HUD.",
+      body: "Upload a matching .srt (same basename as the video) to plot the flight path and altitude graph.",
       cta: { label: "Pair SRT", href: uploadHref },
       icon: "srt",
     });

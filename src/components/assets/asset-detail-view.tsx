@@ -27,7 +27,6 @@ import {
   PhotoClipContextCard,
   type PhotoClipContextView,
 } from "@/components/assets/photo-clip-context-card";
-import { PlaybackHud } from "@/components/assets/playback-hud";
 import { PreviewLutPicker } from "@/components/assets/preview-lut-picker";
 import { useTelemetryCursor } from "@/components/assets/video-player";
 import { distanceMeters } from "@/lib/map/colocated-layout";
@@ -251,7 +250,6 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const [selectedTileIndex, setSelectedTileIndex] = useState<number | null>(
     null,
   );
-  const [hudEnabled, setHudEnabled] = useState(true);
   const [clipContext, setClipContext] = useState<PhotoClipContextView | null>(
     null,
   );
@@ -260,24 +258,6 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     token: number;
   } | null>(null);
   const playbackPrefs = usePlaybackPreferences();
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("dm-playback-hud");
-      if (stored === "0") setHudEnabled(false);
-      if (stored === "1") setHudEnabled(true);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("dm-playback-hud", hudEnabled ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [hudEnabled]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -624,7 +604,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       telemetry.homePoint,
     );
   }, [cursor, telemetry?.homePoint]);
-  const showHud = hudEnabled && series.length > 1;
+
+  function formatHomeDistance(meters: number) {
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${Math.round(meters)} m`;
+  }
 
   if (error) {
     return (
@@ -662,10 +646,14 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       asset.hasHls ||
       asset.hasProxy ||
       (isPanorama && asset.hasPanoPreview);
-  /** In-player Source only after a streaming derivative exists — never as fallback. */
-  const allowSourcePlayback = asset.hasHls || asset.hasProxy;
+  /** Videos: Source only after a streaming derivative exists. Photos: always allow Source. */
+  const allowVideoSourcePlayback = asset.hasHls || asset.hasProxy;
   const mediaUrl = `/api/assets/${asset.id}/original`;
-  const sourceUrl = allowSourcePlayback
+  const photoSourceUrl =
+    asset.assetType === "photo"
+      ? `/api/assets/${asset.id}/original?playback=source`
+      : null;
+  const videoSourceUrl = allowVideoSourcePlayback
     ? `/api/assets/${asset.id}/original?playback=source`
     : null;
   const panoUrl = `/api/assets/${asset.id}/pano`;
@@ -863,7 +851,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <PhotoViewer
               key={`${asset.id}-photo`}
               src={mediaUrl}
-              sourceSrc={sourceUrl}
+              sourceSrc={photoSourceUrl}
               alt={asset.displayName}
               lutId={effectiveLutId}
               className="absolute inset-0 size-full"
@@ -898,25 +886,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <VideoPlayer
               src={mediaUrl}
               hlsSrc={hlsUrl}
-              sourceSrc={sourceUrl}
+              sourceSrc={videoSourceUrl}
               defaultResolution={playbackPrefs.defaultPlaybackResolution}
               lutId={effectiveLutId}
               scrubberMarkers={scrubberMarkers}
               seekRequest={seekRequest}
-              hudEnabled={hudEnabled}
-              onHudEnabledChange={setHudEnabled}
-              overlay={
-                showHud ? (
-                  <PlaybackHud
-                    values={{
-                      altitudeMeters: cursor?.altitudeMeters ?? null,
-                      speedMps: cursor?.speedMps ?? null,
-                      homeDistanceMeters,
-                      satellites: null,
-                    }}
-                  />
-                ) : null
-              }
               onTimeUpdate={(time) => setCurrentTime(time)}
               className="absolute inset-0 size-full object-contain"
             />
@@ -1035,11 +1009,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
 
             <MissingTelemetryCallout
               kind={
-                asset.assetType === "video"
-                  ? "video"
-                  : asset.assetType === "sequence"
-                    ? "sequence"
-                    : "photo"
+                isPanorama || asset.assetType === "photo"
+                  ? "photo"
+                  : asset.assetType === "video"
+                    ? "video"
+                    : "sequence"
               }
               hasSrt={asset.hasSrt}
               parseStatus={asset.telemetry?.parseStatus ?? null}
@@ -1624,10 +1598,15 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                     className="mt-2"
                   />
                 ) : null}
-                {cursor?.speedMps != null ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Speed {(cursor.speedMps * 3.6).toFixed(1)} km/h
-                  </p>
+                {cursor?.speedMps != null || homeDistanceMeters != null ? (
+                  <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                    {cursor?.speedMps != null ? (
+                      <p>Speed {(cursor.speedMps * 3.6).toFixed(1)} km/h</p>
+                    ) : null}
+                    {homeDistanceMeters != null ? (
+                      <p>Home {formatHomeDistance(homeDistanceMeters)}</p>
+                    ) : null}
+                  </div>
                 ) : null}
               </>
             ) : (

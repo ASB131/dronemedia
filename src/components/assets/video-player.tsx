@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Hls from "hls.js";
 import { MoreVertical, Pause, Play } from "lucide-react";
 
@@ -63,9 +63,6 @@ export function VideoPlayer({
   defaultResolution = DEFAULT_PLAYBACK_RESOLUTION,
   lutId,
   scrubberMarkers,
-  overlay,
-  hudEnabled,
-  onHudEnabledChange,
   className,
   onTimeUpdate,
   seekRequest,
@@ -79,11 +76,6 @@ export function VideoPlayer({
   lutId?: string | null;
   /** Timeline markers (max altitude, etc.) — not a chapters menu. */
   scrubberMarkers?: ScrubberMarker[];
-  /** Corner HUD / callouts drawn over the frame (not transformed with zoom). */
-  overlay?: ReactNode;
-  /** When set with onHudEnabledChange, exposes a Telemetry HUD toggle in the menu. */
-  hudEnabled?: boolean;
-  onHudEnabledChange?: (enabled: boolean) => void;
   className?: string;
   onTimeUpdate?: (currentTimeSeconds: number, durationSeconds: number) => void;
   /** Change `token` to force a seek (e.g. map click). */
@@ -445,23 +437,6 @@ export function VideoPlayer({
               </button>
               {menuOpen ? (
                 <div className="absolute bottom-11 right-0 z-20 w-44 overflow-hidden rounded-xl border border-white/15 bg-black/90 py-1 text-sm shadow-lg backdrop-blur">
-                  {onHudEnabledChange ? (
-                    <div className="border-b border-white/10 px-3 py-2">
-                      <button
-                        type="button"
-                        className={cn(
-                          "block w-full rounded-md px-2 py-1 text-left hover:bg-white/10",
-                          hudEnabled && "text-primary",
-                        )}
-                        onClick={() => {
-                          onHudEnabledChange(!hudEnabled);
-                          setMenuOpen(false);
-                        }}
-                      >
-                        Telemetry HUD {hudEnabled ? "On" : "Off"}
-                      </button>
-                    </div>
-                  ) : null}
                   <div className="border-b border-white/10 px-3 py-2">
                     <p className="mb-1 text-[11px] uppercase tracking-wide text-white/50">
                       Speed
@@ -560,7 +535,6 @@ export function VideoPlayer({
             onFallback={onLutFallback}
           />
         ) : null}
-        {overlay}
       </div>
     </MediaZoomStage>
   );
