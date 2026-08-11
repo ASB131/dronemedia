@@ -4,35 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DriveImportPanel } from "@/components/upload/drive-import-panel";
-import { createClientId } from "@/lib/id";
 import type { MissionTemplateDto } from "@/lib/missions/queries";
 import {
-  commitUploadBatch,
-  detectMissingLinkedFiles,
-  initUploadBatch,
+  formatUploadBytes,
   parseBasename,
-  uploadFileChunks,
   type UploadFileState,
 } from "@/lib/upload/client";
-import {
-  collectFilesFromDataTransfer,
-  getFileRelativePath,
-} from "@/lib/upload/relative-path";
+import { collectFilesFromDataTransfer } from "@/lib/upload/relative-path";
 import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
 import { useUploadStore } from "@/stores/upload-store";
 
-function fileKey(file: File) {
-  const rel = getFileRelativePath(file) ?? file.name;
-  return `${rel}::${file.size}::${file.lastModified}`;
-}
-
-function mergeFiles(current: File[], incoming: File[]) {
-  const map = new Map(current.map((file) => [fileKey(file), file]));
-  for (const file of incoming) {
-    map.set(fileKey(file), file);
-  }
-  return [...map.values()];
-}
+const DEFAULT_MAX_FILE_BYTES = 80 * 1024 * 1024 * 1024;
 
 function UploadFileRow({ file }: { file: UploadFileState }) {
   return (
@@ -41,7 +23,7 @@ function UploadFileRow({ file }: { file: UploadFileState }) {
         <div className="min-w-0">
           <p className="truncate font-medium">{file.file.name}</p>
           <p className="text-xs text-muted-foreground">
-            {(file.file.size / (1024 * 1024)).toFixed(1)} MB • {file.status}
+            {formatUploadBytes(file.file.size)} • {file.status}
           </p>
           {file.missingLinked && file.missingLinked.length > 0 ? (
             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
@@ -67,22 +49,39 @@ function UploadFileRow({ file }: { file: UploadFileState }) {
 }
 
 export function UploadZone() {
-  const { batch, setBatch, updateFile, reset } = useUploadStore();
+  const batch = useUploadStore((s) => s.batch);
+  const pendingFiles = useUploadStore((s) => s.pendingFiles);
+  const notice = useUploadStore((s) => s.notice);
+  const bulkMode = useUploadStore((s) => s.bulkMode);
+  const waveInfo = useUploadStore((s) => s.waveInfo);
+  const queueFiles = useUploadStore((s) => s.queueFiles);
+  const setBatchError = useCallback((error: string) => {
+    useUploadStore.setState({
+      batch: {
+        batchId: undefined,
+        files: [],
+        status: "error",
+        error,
+      },
+      dockDismissed: false,
+      dockExpanded: true,
+    });
+  }, []);
+  const setNotice = useUploadStore((s) => s.setNotice);
+  const setBulkMode = useUploadStore((s) => s.setBulkMode);
+  const reset = useUploadStore((s) => s.reset);
+
   const [isDragging, setIsDragging] = useState(false);
   const [templates, setTemplates] = useState<MissionTemplateDto[]>([]);
   const [templateId, setTemplateId] = useState("");
-  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [maxFileSizeBytes, setMaxFileSizeBytes] = useState(
+    DEFAULT_MAX_FILE_BYTES,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const uploadingRef = useRef(false);
-  const pendingRef = useRef<File[]>([]);
-  const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    pendingRef.current = pendingFiles;
-  }, [pendingFiles]);
 
   useEffect(() => {
     void (async () => {
@@ -92,6 +91,23 @@ export function UploadZone() {
         templates: MissionTemplateDto[];
       };
       setTemplates(payload.templates);
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/account");
+        if (!response.ok) return;
+        const payload = (await response.json()) as {
+          upload?: { maxFileSizeBytes?: number };
+        };
+        if (payload.upload?.maxFileSizeBytes) {
+          setMaxFileSizeBytes(payload.upload.maxFileSizeBytes);
+        }
+      } catch {
+        // Keep default ~80 GB copy.
+      }
     })();
   }, []);
 
@@ -116,25 +132,26 @@ export function UploadZone() {
       (item) => !item.required || checkedItems[item.id],
     );
 
-  const startUpload = useCallback(
-    async (selected: File[]) => {
-      if (selected.length === 0 || uploadingRef.current) return;
+  const enqueueValidated = useCallback(
+    (incoming: File[]) => {
+      if (incoming.length === 0) return;
 
-      if (selected.length > MAX_UPLOAD_BATCH_FILES) {
+      const oversized = incoming.filter(
+        (file) => file.size > maxFileSizeBytes,
+      );
+      if (oversized.length > 0) {
         setNotice(
-          `Too many files (${selected.length}). Max ${MAX_UPLOAD_BATCH_FILES} per batch — upload in smaller groups.`,
+          `${oversized.length} file${oversized.length === 1 ? "" : "s"} exceed the ${formatUploadBytes(maxFileSizeBytes)} limit and were not queued.`,
         );
-        return;
       }
+      const selected = incoming.filter(
+        (file) => file.size <= maxFileSizeBytes,
+      );
+      if (selected.length === 0) return;
 
       if (activeTemplate) {
         const basenames = new Set(
           selected.map((file) => parseBasename(file.name).basename),
-        );
-        const extensions = new Set(
-          selected.map((file) =>
-            parseBasename(file.name).extension.toLowerCase(),
-          ),
         );
         if (activeTemplate.requireSrt) {
           for (const basename of basenames) {
@@ -153,179 +170,34 @@ export function UploadZone() {
               );
             });
             if (hasMedia && !hasSrt) {
-              setBatch({
-                batchId: undefined,
-                files: [],
-                status: "error",
-                error: `Mission template requires SRT for each clip (missing for ${basename}).`,
-              });
+              setBatchError(
+                `Mission template requires SRT for each clip (missing for ${basename}).`,
+              );
               return;
             }
           }
         }
-        if (activeTemplate.requireLrf && !extensions.has("lrf")) {
-          // optional soft notice — LRF often pairs with one clip in a batch
-        }
         if (!checklistReady) {
-          setBatch({
-            batchId: undefined,
-            files: [],
-            status: "error",
-            error: "Complete the mission checklist before uploading.",
-          });
+          setBatchError("Complete the mission checklist before uploading.");
           return;
         }
       }
 
-      uploadingRef.current = true;
-      setNotice(null);
-
-      const missingMap = detectMissingLinkedFiles(selected);
-      const localFiles: UploadFileState[] = selected.map((file) => {
-        const { basename, extension } = parseBasename(file.name);
-        const missingLinked = missingMap.get(basename);
-        return {
-          localId: createClientId(),
-          file,
-          basename,
-          extension,
-          status: "queued",
-          progress: 0,
-          missingLinked,
-        };
-      });
-
-      setBatch({ batchId: undefined, files: localFiles, status: "uploading" });
-
-      try {
-        // Always start a fresh batch for each staged wave so prior commits
-        // cannot leave an invalid/closed batchId.
-        const init = await initUploadBatch(selected);
-        setBatch({
-          batchId: init.batchId,
-          status: "uploading",
-          files: localFiles.map((local, index) => ({
-            ...local,
-            sessionId: init.files[index]?.id,
-          })),
-        });
-
-        for (let i = 0; i < localFiles.length; i++) {
-          const local = localFiles[i]!;
-          const session = init.files[i]!;
-          updateFile(local.localId, {
-            status: "uploading",
-            sessionId: session.id,
-          });
-
-          await uploadFileChunks({
-            sessionId: session.id,
-            file: local.file,
-            chunkSizeBytes: session.chunkSizeBytes,
-            totalChunks: session.totalChunks,
-            onProgress: (progress) =>
-              updateFile(local.localId, { progress, status: "uploading" }),
-          });
-
-          updateFile(local.localId, { progress: 1, status: "complete" });
-        }
-
-        setBatch({
-          batchId: init.batchId,
-          files: localFiles.map((f) => ({
-            ...f,
-            progress: 1,
-            status: "complete",
-          })),
-          status: "committing",
-        });
-
-        const commitResult = (await commitUploadBatch(init.batchId)) as {
-          warnings?: string[];
-        };
-        setBatch({
-          batchId: init.batchId,
-          files: localFiles.map((f) => ({
-            ...f,
-            progress: 1,
-            status: "committed",
-          })),
-          status: "done",
-        });
-        if (commitResult.warnings && commitResult.warnings.length > 0) {
-          setNotice(commitResult.warnings.join(" · "));
-        }
-      } catch (error) {
-        setBatch({
-          batchId: undefined,
-          files: localFiles,
-          status: "error",
-          error: error instanceof Error ? error.message : "Upload failed",
-        });
-      } finally {
-        uploadingRef.current = false;
-
-        // Auto-continue with overflow / files dropped during this wave.
-        const leftover = pendingRef.current;
-        if (leftover.length > 0) {
-          const wave = leftover.slice(0, MAX_UPLOAD_BATCH_FILES);
-          const rest = leftover.slice(MAX_UPLOAD_BATCH_FILES);
-          setPendingFiles(rest);
-          pendingRef.current = rest;
-          void startUpload(wave);
-        }
-      }
+      queueFiles(selected);
     },
-    [activeTemplate, checklistReady, setBatch, updateFile],
+    [
+      activeTemplate,
+      checklistReady,
+      maxFileSizeBytes,
+      queueFiles,
+      setBatchError,
+      setNotice,
+    ],
   );
-
-  const queueFiles = useCallback(
-    (incoming: File[]) => {
-      if (incoming.length === 0) return;
-
-      setPendingFiles((current) => {
-        const merged = mergeFiles(current, incoming);
-        const added = merged.length - current.length;
-        if (added > 0) {
-          const waves = Math.ceil(merged.length / MAX_UPLOAD_BATCH_FILES);
-          setNotice(
-            uploadingRef.current
-              ? `Added ${added} file${added === 1 ? "" : "s"} — they’ll upload after the current batch.`
-              : waves > 1
-                ? `Ready: ${merged.length} files (will upload in ${waves} batches of up to ${MAX_UPLOAD_BATCH_FILES}).`
-                : `Ready: ${merged.length} file${merged.length === 1 ? "" : "s"}`,
-          );
-        }
-        pendingRef.current = merged;
-        return merged;
-      });
-
-      if (startTimerRef.current) clearTimeout(startTimerRef.current);
-
-      // Short debounce so multiple drops can accumulate before upload starts.
-      startTimerRef.current = setTimeout(() => {
-        if (uploadingRef.current) return;
-        const ready = pendingRef.current;
-        if (ready.length === 0) return;
-        const wave = ready.slice(0, MAX_UPLOAD_BATCH_FILES);
-        const rest = ready.slice(MAX_UPLOAD_BATCH_FILES);
-        setPendingFiles(rest);
-        pendingRef.current = rest;
-        void startUpload(wave);
-      }, 700);
-    },
-    [startUpload],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (startTimerRef.current) clearTimeout(startTimerRef.current);
-    };
-  }, []);
 
   const onInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const list = event.target.files ? [...event.target.files] : [];
-    queueFiles(list);
+    enqueueValidated(list);
     event.target.value = "";
   };
 
@@ -339,7 +211,7 @@ export function UploadZone() {
       );
       return;
     }
-    queueFiles(collected);
+    enqueueValidated(collected);
   };
 
   const overallProgress = useMemo(() => {
@@ -356,16 +228,35 @@ export function UploadZone() {
         <h1 className="text-2xl font-semibold tracking-tight">Upload</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Import from an SD card or drone, or drop files below. Linked
-          basenames (video + SRT/LRF) and hyperlapse/panorama folders are grouped.
-          Panoramas pair PANORAMA/100_XXXX tiles with 100MEDIA/DJI_XXXX.JPG when
-          both are present — or when uploaded at different times (stitch first,
-          tiles later).
+          basenames (video + SRT/LRF) and hyperlapse/panorama folders are
+          grouped. Panoramas pair PANORAMA/100_XXXX tiles with
+          100MEDIA/DJI_XXXX.JPG when both are present — or when uploaded at
+          different times (stitch first, tiles later).
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Limits: up to {MAX_UPLOAD_BATCH_FILES} files per batch · up to ~80 GB
-          per file
+          Limits: up to {MAX_UPLOAD_BATCH_FILES} files per batch · up to{" "}
+          {formatUploadBytes(maxFileSizeBytes)} per file · uploads continue in
+          the dock while you browse. Closing this tab stops the transfer.
         </p>
       </div>
+
+      <label className="flex items-start gap-3 rounded-xl border border-border p-4 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={bulkMode}
+          onChange={(event) => setBulkMode(event.target.checked)}
+        />
+        <span>
+          <span className="font-medium">Bulk import mode</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            For large card dumps (~tens to hundreds of GB). Keep this browser
+            tab open; progress stays in the bottom-right dock. Admins can pause
+            heavy processing jobs in Utilities during the import if the server
+            gets busy.
+          </span>
+        </span>
+      </label>
 
       {templates.length > 0 ? (
         <div className="space-y-3 rounded-xl border border-border p-4">
@@ -424,7 +315,7 @@ export function UploadZone() {
       ) : null}
 
       <DriveImportPanel
-        onQueueFiles={queueFiles}
+        onQueueFiles={enqueueValidated}
         requireSrt={Boolean(activeTemplate?.requireSrt)}
       />
 
@@ -489,6 +380,7 @@ export function UploadZone() {
           {batch.status === "uploading" || batch.status === "committing"
             ? " for the next batch"
             : " — starting shortly…"}
+          {waveInfo ? ` · wave ${waveInfo.waveNumber}` : ""}
         </p>
       ) : null}
 
@@ -501,6 +393,10 @@ export function UploadZone() {
             </span>
             <span>{Math.round(overallProgress * 100)}%</span>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Live progress also stays in the upload dock (bottom right) while you
+            browse the library.
+          </p>
           {batch.error ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {batch.error}
@@ -515,7 +411,6 @@ export function UploadZone() {
               variant="outline"
               onClick={() => {
                 reset();
-                setNotice(null);
               }}
             >
               Clear list

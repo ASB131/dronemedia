@@ -41,6 +41,54 @@ export type ClientUploadInitResponse = {
   }>;
 };
 
+const CHUNK_CONCURRENCY = 3;
+const CHUNK_MAX_ATTEMPTS = 3;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function chunkByteRange(
+  fileSize: number,
+  chunkSizeBytes: number,
+  index: number,
+) {
+  const start = index * chunkSizeBytes;
+  const end = Math.min(start + chunkSizeBytes, fileSize);
+  return { start, end, size: end - start };
+}
+
+function bytesForIndices(
+  fileSize: number,
+  chunkSizeBytes: number,
+  indices: Iterable<number>,
+) {
+  let total = 0;
+  for (const index of indices) {
+    total += chunkByteRange(fileSize, chunkSizeBytes, index).size;
+  }
+  return total;
+}
+
+async function mapPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+) {
+  let cursor = 0;
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        await worker(items[index]!);
+      }
+    },
+  );
+  await Promise.all(runners);
+}
+
 export async function initUploadBatch(
   files: File[],
   batchId?: string,
@@ -67,42 +115,118 @@ export async function initUploadBatch(
   return (await response.json()) as ClientUploadInitResponse;
 }
 
+async function putChunk(params: {
+  sessionId: string;
+  index: number;
+  chunk: Blob;
+  signal?: AbortSignal;
+}) {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < CHUNK_MAX_ATTEMPTS; attempt++) {
+    if (params.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    try {
+      const response = await fetch(
+        `/api/upload/files/${params.sessionId}/chunks/${params.index}`,
+        {
+          method: "PUT",
+          body: params.chunk,
+          signal: params.signal,
+        },
+      );
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? `Chunk ${params.index} upload failed`);
+      }
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error;
+      }
+      lastError =
+        error instanceof Error ? error : new Error("Chunk upload failed");
+      if (attempt < CHUNK_MAX_ATTEMPTS - 1) {
+        await sleep(300 * (attempt + 1));
+      }
+    }
+  }
+  throw lastError ?? new Error(`Chunk ${params.index} upload failed`);
+}
+
 export async function uploadFileChunks(params: {
   sessionId: string;
   file: File;
   chunkSizeBytes: number;
   totalChunks: number;
+  uploadedChunkIndices?: number[];
+  signal?: AbortSignal;
   onProgress: (progress: number) => void;
+  onAssembling?: () => void;
 }) {
+  const uploaded = new Set(params.uploadedChunkIndices ?? []);
+  const missing: number[] = [];
   for (let index = 0; index < params.totalChunks; index++) {
-    const start = index * params.chunkSizeBytes;
-    const end = Math.min(start + params.chunkSizeBytes, params.file.size);
-    const chunk = params.file.slice(start, end);
-
-    const response = await fetch(
-      `/api/upload/files/${params.sessionId}/chunks/${index}`,
-      {
-        method: "PUT",
-        body: chunk,
-      },
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? `Chunk ${index} upload failed`);
-    }
-
-    params.onProgress(end / params.file.size);
+    if (!uploaded.has(index)) missing.push(index);
   }
+
+  const report = () => {
+    const doneBytes = bytesForIndices(
+      params.file.size,
+      params.chunkSizeBytes,
+      uploaded,
+    );
+    params.onProgress(
+      params.file.size === 0 ? 1 : Math.min(1, doneBytes / params.file.size),
+    );
+  };
+  report();
+
+  await mapPool(missing, CHUNK_CONCURRENCY, async (index) => {
+    if (params.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const { start, end } = chunkByteRange(
+      params.file.size,
+      params.chunkSizeBytes,
+      index,
+    );
+    const chunk = params.file.slice(start, end);
+    await putChunk({
+      sessionId: params.sessionId,
+      index,
+      chunk,
+      signal: params.signal,
+    });
+    uploaded.add(index);
+    report();
+  });
+
+  params.onAssembling?.();
 
   const completeResponse = await fetch(
     `/api/upload/files/${params.sessionId}/complete`,
-    { method: "POST" },
+    { method: "POST", signal: params.signal },
   );
 
   if (!completeResponse.ok) {
     const payload = (await completeResponse.json()) as { error?: string };
     throw new Error(payload.error ?? "Failed to finalize file upload");
+  }
+}
+
+export async function markUploadFileFailed(
+  sessionId: string,
+  errorMessage: string,
+) {
+  try {
+    await fetch(`/api/upload/files/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "failed", errorMessage }),
+    });
+  } catch {
+    // Best-effort; commit will also skip non-complete sessions.
   }
 }
 
@@ -127,7 +251,9 @@ export function parseBasename(filename: string): {
   return { basename: basename.toLowerCase(), extension };
 }
 
-export function detectMissingLinkedFiles(files: File[]): Map<string, Array<"srt" | "lrf">> {
+export function detectMissingLinkedFiles(
+  files: File[],
+): Map<string, Array<"srt" | "lrf">> {
   const groups = new Map<
     string,
     { hasVideo: boolean; hasSrt: boolean; hasLrf: boolean }
@@ -155,4 +281,27 @@ export function detectMissingLinkedFiles(files: File[]): Map<string, Array<"srt"
     if (needs.length > 0) missing.set(basename, needs);
   }
   return missing;
+}
+
+export function formatUploadBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+export function formatEtaSeconds(seconds: number | null) {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins < 60) return `${mins}m ${secs}s`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hours}h ${remMins}m`;
 }

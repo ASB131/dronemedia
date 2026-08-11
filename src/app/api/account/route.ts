@@ -9,6 +9,7 @@ import {
   isPlaybackResolution,
 } from "@/lib/playback/resolution";
 import { updateUserProfile } from "@/lib/profiles/queries";
+import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,11 @@ export async function GET() {
       pinEnabled: Boolean(user.pinHash),
       preferences,
       profileUrl: `/u/${encodeURIComponent(user.username)}`,
+      upload: {
+        maxFileSizeBytes: config.upload.maxFileSizeBytes,
+        chunkSizeBytes: config.upload.chunkSizeBytes,
+        maxBatchFiles: MAX_UPLOAD_BATCH_FILES,
+      },
     });
   } catch (error) {
     return jsonError(error);

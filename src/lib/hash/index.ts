@@ -52,3 +52,36 @@ export async function hashFileStream(
     sha.digest("hex"),
   );
 }
+
+/**
+ * Streaming hasher for the configured primary algorithm only.
+ * Used during upload assemble so we don't pay for a second full-file SHA-256
+ * pass on every multi-GB video.
+ */
+export function createPrimaryContentHasher() {
+  const algorithm = loadConfig().deduplication.algorithm;
+  if (algorithm === "sha256") {
+    const sha = createHash("sha256");
+    return {
+      update(buf: Buffer) {
+        sha.update(buf);
+      },
+      digest(): HashResult {
+        return finalizeDigests("", sha.digest("hex"));
+      },
+    };
+  }
+
+  const xx = XXH.h64(0);
+  return {
+    update(buf: Buffer) {
+      xx.update(buf);
+    },
+    digest(): HashResult {
+      return finalizeDigests(
+        xx.digest().toString(16).padStart(16, "0"),
+        "",
+      );
+    },
+  };
+}

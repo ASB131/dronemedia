@@ -336,17 +336,32 @@ export async function commitUploadBatch(batchId: string, userId: string) {
     throw new Error("Batch is not open for commit");
   }
 
-  const files = await db
+  const allFiles = await db
     .select()
     .from(uploadFiles)
     .where(eq(uploadFiles.batchId, batchId));
 
-  if (files.length === 0) {
+  if (allFiles.length === 0) {
     throw new Error("Batch has no files");
   }
 
-  if (files.some((f) => f.status !== "complete")) {
-    throw new Error("All files must be assembled before commit");
+  const files = allFiles.filter((f) => f.status === "complete");
+  if (files.length === 0) {
+    throw new Error("No assembled files ready to commit");
+  }
+
+  const incomplete = allFiles.filter((f) => f.status !== "complete");
+  const skippedIncompleteCount = incomplete.length;
+  for (const file of incomplete) {
+    if (file.status === "failed" || file.status === "cancelled") continue;
+    await db
+      .update(uploadFiles)
+      .set({
+        status: "failed",
+        errorMessage: file.errorMessage ?? "Skipped — upload incomplete",
+        updatedAt: new Date(),
+      })
+      .where(eq(uploadFiles.id, file.id));
   }
 
   if (config.deduplication.onDuplicate === "reject") {
@@ -720,6 +735,11 @@ export async function commitUploadBatch(batchId: string, userId: string) {
   }
 
   const warnings: string[] = [];
+  if (skippedIncompleteCount > 0) {
+    warnings.push(
+      `${skippedIncompleteCount} file${skippedIncompleteCount === 1 ? "" : "s"} failed and were skipped`,
+    );
+  }
   const groups = new Map<string, typeof nonSequenceFiles>();
   for (const file of nonSequenceFiles) {
     const key = groupKeyForUploadFile(file.basename, file.extension);

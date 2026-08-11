@@ -11,6 +11,7 @@ import { ProfileMenu } from "@/components/layout/profile-menu";
 import { SearchBar } from "@/components/search/search-bar";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { UploadDock } from "@/components/upload/upload-dock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -277,10 +278,13 @@ export function AppShell({
           </footer>
         </aside>
 
-        <main className="dm-scrollbar min-w-0 flex-1 overflow-auto">
-          <div className="dm-content-enter h-full">{children}</div>
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="dm-content-enter dm-scrollbar h-full min-h-0 overflow-auto">
+            {children}
+          </div>
         </main>
       </div>
+      <UploadDock />
     </div>
   );
 }

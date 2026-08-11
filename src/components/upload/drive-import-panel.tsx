@@ -699,6 +699,11 @@ export function DriveImportPanel({
                   ? ` · ${groups.length} items`
                   : null}
           </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Upload size limit is separate from duplicate checks: files larger
+            than 2 GB are still imported; only auto content-hash matching is
+            skipped unless you use &quot;Check large files&quot;.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -807,14 +812,19 @@ export function DriveImportPanel({
                 disabled={checking}
                 onClick={() => void onCheckLarge()}
               >
-                Check large files
+                Check large files (&gt;2 GB hash)
               </Button>
               {checking ? (
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="size-3.5 animate-spin" />
                   {hashProgress ?? "Checking…"}
                 </span>
-              ) : null}
+              ) : (
+                <span className="text-[11px] text-muted-foreground">
+                  Files over 2 GB still upload — only automatic duplicate hashing
+                  is skipped unless you check them here.
+                </span>
+              )}
             </div>
           ) : tab === "library" ? (
             <p className="text-xs text-muted-foreground">

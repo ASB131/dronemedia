@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
-import { getUploadFileStatus } from "@/lib/upload/session";
+import {
+  getUploadFileStatus,
+  markUploadFileFailed,
+} from "@/lib/upload/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const patchBodySchema = z.object({
+  status: z.literal("failed"),
+  errorMessage: z.string().max(2000).optional(),
+});
 
 export async function GET(
   _request: Request,
@@ -33,6 +42,32 @@ export async function GET(
       totalChunks: file.totalChunks,
       uploadedChunkIndices: file.uploadedChunkIndices,
       missingChunks,
+    });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ fileId: string }> },
+) {
+  try {
+    const session = await requireApprovedSession();
+    const { fileId } = await context.params;
+    const body = patchBodySchema.safeParse(await request.json());
+    if (!body.success) {
+      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+    }
+    const file = await markUploadFileFailed({
+      fileId,
+      userId: session.user.id,
+      errorMessage: body.data.errorMessage,
+    });
+    return NextResponse.json({
+      id: file.id,
+      status: file.status,
+      errorMessage: file.errorMessage,
     });
   } catch (error) {
     return jsonError(error);

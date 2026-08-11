@@ -1,5 +1,5 @@
 import { addHours } from "@/lib/dates";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { loadConfig } from "@/lib/config";
 import { getWebDb } from "@/lib/db";
@@ -167,26 +167,77 @@ export async function recordUploadedChunk(params: {
     throw new Error("Invalid chunk index");
   }
 
-  const indices = new Set(file.uploadedChunkIndices);
-  if (!indices.has(params.chunkIndex)) {
-    indices.add(params.chunkIndex);
-  }
-
-  const receivedBytes = Math.min(
-    file.fileSizeBytes,
-    file.receivedBytes + params.chunkBytes,
-  );
-
-  await db
+  // Atomic merge — parallel chunk PUTs must not clobber each other's indices
+  // via read-modify-write races.
+  const [updated] = await db
     .update(uploadFiles)
     .set({
-      uploadedChunkIndices: [...indices].sort((a, b) => a - b),
-      receivedBytes,
+      uploadedChunkIndices: sql`(
+        SELECT COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT i
+          FROM (
+            SELECT jsonb_array_elements_text(
+              COALESCE(uploaded_chunk_indices, '[]'::jsonb)
+            )::int AS i
+            UNION ALL
+            SELECT ${params.chunkIndex}::int
+          ) merged
+        ) distinct_indices
+      )`,
+      receivedBytes: sql`LEAST(
+        file_size_bytes,
+        CASE
+          WHEN COALESCE(uploaded_chunk_indices, '[]'::jsonb)
+            @> to_jsonb(${params.chunkIndex}::int)
+          THEN received_bytes
+          ELSE received_bytes + ${params.chunkBytes}
+        END
+      )`,
       status: "uploading",
       lastChunkAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(uploadFiles.id, params.fileId));
+    .where(
+      and(
+        eq(uploadFiles.id, params.fileId),
+        eq(uploadFiles.userId, params.userId),
+      ),
+    )
+    .returning({
+      uploadedChunkIndices: uploadFiles.uploadedChunkIndices,
+    });
 
-  return { uploadedChunkIndices: [...indices].sort((a, b) => a - b) };
+  if (!updated) {
+    throw new Error("Upload file not found");
+  }
+
+  return { uploadedChunkIndices: updated.uploadedChunkIndices };
+}
+
+export async function markUploadFileFailed(params: {
+  fileId: string;
+  userId: string;
+  errorMessage?: string;
+}) {
+  const db = getWebDb();
+  const file = await getUploadFileStatus(params.fileId, params.userId);
+  if (!file) {
+    throw new Error("Upload file not found");
+  }
+  if (file.status === "complete" || file.status === "cancelled") {
+    return file;
+  }
+
+  const [updated] = await db
+    .update(uploadFiles)
+    .set({
+      status: "failed",
+      errorMessage: params.errorMessage?.slice(0, 2000) ?? "Upload failed",
+      updatedAt: new Date(),
+    })
+    .where(eq(uploadFiles.id, params.fileId))
+    .returning();
+
+  return updated ?? file;
 }
