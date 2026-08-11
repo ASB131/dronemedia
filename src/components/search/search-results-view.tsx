@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Film, ImageIcon, Images, Plane, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Film, ImageIcon, Images, Plane } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import type { SearchResults } from "@/lib/search/queries";
 
 function formatCapturedAt(capturedAt: string) {
@@ -22,15 +21,9 @@ export function SearchResultsView({
 }: {
   initialQuery: string;
 }) {
-  const router = useRouter();
-  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  useEffect(() => {
-    setQuery(initialQuery);
-  }, [initialQuery]);
 
   useEffect(() => {
     let mounted = true;
@@ -63,7 +56,7 @@ export function SearchResultsView({
     };
   }, [initialQuery]);
 
-  async function loadMore() {
+  const loadMore = useCallback(async () => {
     if (!results?.nextCursor || isLoadingMore) return;
     const trimmed = initialQuery.trim();
     if (!trimmed) return;
@@ -95,7 +88,7 @@ export function SearchResultsView({
     } finally {
       setIsLoadingMore(false);
     }
-  }
+  }, [initialQuery, isLoadingMore, results?.nextCursor]);
 
   const trimmed = initialQuery.trim();
   const total =
@@ -106,33 +99,16 @@ export function SearchResultsView({
       <div className="border-b border-border px-4 py-4">
         <h1 className="text-lg font-semibold">Search</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Search by filename, drone, place, date, tags, or description
+          {trimmed
+            ? `Results for “${trimmed}”`
+            : "Use the search bar above to find media, drones, places, or dates"}
         </p>
-        <form
-          className="mt-3 flex h-11 max-w-2xl items-center gap-2 rounded-full border border-border bg-muted/40 px-4 text-sm focus-within:border-primary/40 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const next = query.trim();
-            router.push(
-              next ? `/search?q=${encodeURIComponent(next)}` : "/search",
-            );
-          }}
-        >
-          <Search className="size-4 shrink-0 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="e.g. Singapore, Mini 4 Pro, 2024, DJI_0123"
-            className="w-full bg-transparent outline-none placeholder:text-muted-foreground"
-            autoFocus
-          />
-        </form>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         {!trimmed ? (
           <p className="text-sm text-muted-foreground">
-            Type something above to search your library.
+            Type in the top search bar to search your library.
           </p>
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
@@ -192,19 +168,11 @@ export function SearchResultsView({
                     </Link>
                   ))}
                 </div>
-                {results.nextCursor ? (
-                  <div className="mt-4 flex justify-center">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void loadMore()}
-                      disabled={isLoadingMore}
-                    >
-                      {isLoadingMore ? "Loading…" : "Load more"}
-                    </Button>
-                  </div>
-                ) : null}
+                <InfiniteScrollSentinel
+                  enabled={Boolean(results.nextCursor)}
+                  loading={isLoadingMore}
+                  onLoadMore={() => void loadMore()}
+                />
               </section>
             ) : null}
 

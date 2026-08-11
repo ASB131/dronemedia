@@ -75,3 +75,42 @@ export function clearTimelineScrollPosition(favoritesOnly: boolean) {
     // ignore
   }
 }
+
+const FLIGHTS_VIEW_KEY = "dm-flights-view";
+
+export type FlightsViewState = {
+  view: "list" | "map";
+  yearFilter: string;
+  listScrollTop?: number;
+  map?: { lat: number; lng: number; zoom: number };
+};
+
+export function saveFlightsViewState(state: FlightsViewState) {
+  try {
+    sessionStorage.setItem(FLIGHTS_VIEW_KEY, JSON.stringify(state));
+    setMediaReturnPath("/flights");
+  } catch {
+    // ignore
+  }
+}
+
+export function peekFlightsViewState(): FlightsViewState | null {
+  try {
+    const raw = sessionStorage.getItem(FLIGHTS_VIEW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FlightsViewState;
+    if (parsed.view !== "list" && parsed.view !== "map") return null;
+    if (typeof parsed.yearFilter !== "string") return null;
+    if (
+      parsed.map &&
+      (typeof parsed.map.lat !== "number" ||
+        typeof parsed.map.lng !== "number" ||
+        typeof parsed.map.zoom !== "number")
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}

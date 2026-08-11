@@ -14,25 +14,65 @@ import {
 } from "lucide-react";
 
 import { AlbumMembersPanel } from "@/components/albums/album-members-panel";
-import type { AlbumDetailDto } from "@/lib/albums/queries";
+import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
+import type { AlbumAssetDto, AlbumDetailDto } from "@/lib/albums/queries";
+
+const PAGE_SIZE = 48;
 
 export function AlbumDetailView({ albumId }: { albumId: string }) {
   const router = useRouter();
   const [album, setAlbum] = useState<AlbumDetailDto | null>(null);
+  const [assets, setAssets] = useState<AlbumAssetDto[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const loadPage = useCallback(
+    async (cursor?: string) => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`/api/albums/${albumId}?${params}`);
+      if (!response.ok) {
+        throw new Error(
+          response.status === 404 ? "Album not found" : "Failed to load",
+        );
+      }
+      return (await response.json()) as {
+        album: AlbumDetailDto;
+        nextCursor: string | null;
+      };
+    },
+    [albumId],
+  );
 
   const load = useCallback(async () => {
-    const response = await fetch(`/api/albums/${albumId}`);
-    if (!response.ok) {
-      setError(response.status === 404 ? "Album not found" : "Failed to load");
-      return;
+    try {
+      const payload = await loadPage();
+      setAlbum(payload.album);
+      setAssets(payload.album.assets);
+      setNextCursor(payload.nextCursor ?? payload.album.nextCursor);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
     }
-    const payload = (await response.json()) as { album: AlbumDetailDto };
-    setAlbum(payload.album);
-    setError(null);
-  }, [albumId]);
+  }, [loadPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const payload = await loadPage(nextCursor);
+      setAssets((current) => [...current, ...payload.album.assets]);
+      setNextCursor(payload.nextCursor ?? payload.album.nextCursor);
+      setError(null);
+    } catch {
+      setError("Failed to load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadPage, loadingMore, nextCursor]);
 
   useEffect(() => {
     void load();
@@ -59,7 +99,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
     router.push("/albums");
   }
 
-  if (error) {
+  if (error && !album) {
     return (
       <div className="p-8 text-center text-sm text-destructive">{error}</div>
     );
@@ -119,7 +159,10 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        {album.assets.length === 0 ? (
+        {error ? (
+          <p className="mb-3 text-sm text-destructive">{error}</p>
+        ) : null}
+        {assets.length === 0 ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
             <p className="text-sm text-muted-foreground">
               No assets in this album yet.
@@ -129,30 +172,38 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-            {album.assets.map((asset) => (
-              <Link
-                key={asset.id}
-                href={`/assets/${asset.id}`}
-                className="group relative aspect-square overflow-hidden rounded-md bg-muted"
-                title={asset.displayName}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/assets/${asset.id}/thumbnail`}
-                  alt={asset.displayName}
-                  className="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
-                />
-                <span className="absolute bottom-1.5 left-1.5 inline-flex rounded bg-black/55 p-1 text-white">
-                  {asset.assetType === "video" ? (
-                    <Film className="size-3" />
-                  ) : (
-                    <ImageIcon className="size-3" />
-                  )}
-                </span>
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+              {assets.map((asset) => (
+                <Link
+                  key={asset.id}
+                  href={`/assets/${asset.id}`}
+                  className="group relative aspect-square overflow-hidden rounded-md bg-muted"
+                  title={asset.displayName}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/assets/${asset.id}/thumbnail`}
+                    alt={asset.displayName}
+                    className="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
+                    loading="lazy"
+                  />
+                  <span className="absolute bottom-1.5 left-1.5 inline-flex rounded bg-black/55 p-1 text-white">
+                    {asset.assetType === "video" ? (
+                      <Film className="size-3" />
+                    ) : (
+                      <ImageIcon className="size-3" />
+                    )}
+                  </span>
+                </Link>
+              ))}
+            </div>
+            <InfiniteScrollSentinel
+              enabled={Boolean(nextCursor)}
+              loading={loadingMore}
+              onLoadMore={() => void loadMore()}
+            />
+          </>
         )}
       </div>
 

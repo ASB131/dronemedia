@@ -18,6 +18,8 @@ const bodySchema = z.object({
     .enum(["1080", "1440", "source"])
     .optional(),
   previewLutId: z.string().uuid().nullable().optional(),
+  defaultDLogLutId: z.string().uuid().nullable().optional(),
+  defaultDLogMLutId: z.string().uuid().nullable().optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -53,6 +55,12 @@ export async function PATCH(request: Request) {
         : {}),
       ...(body.previewLutId !== undefined
         ? { previewLutId: body.previewLutId }
+        : {}),
+      ...(body.defaultDLogLutId !== undefined
+        ? { defaultDLogLutId: body.defaultDLogLutId }
+        : {}),
+      ...(body.defaultDLogMLutId !== undefined
+        ? { defaultDLogMLutId: body.defaultDLogMLutId }
         : {}),
     };
 

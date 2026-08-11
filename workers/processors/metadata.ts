@@ -577,6 +577,17 @@ export function createMetadataWorker(connection: { url: string }) {
         await db.update(assets).set(updates).where(eq(assets.id, assetId));
       }
 
+      const { applyDefaultPreferredLutIfNeeded } = await import(
+        "@/lib/luts/apply-default-preferred"
+      );
+      await applyDefaultPreferredLutIfNeeded(db, {
+        userId,
+        assetId,
+        mediaMetadata: mediaMetadata ?? asset.mediaMetadata,
+        // Thumbnails usually run after metadata; avoid a race requeue here.
+        requeueThumbnail: false,
+      });
+
       // Photos / panos join existing video flights by time/GPS; never create alone.
       if (
         asset.assetType === "photo" ||

@@ -49,6 +49,10 @@ export const users = pgTable(
           | "source";
         /** Viewer-chosen LUT applied to D-Log / D-Log M previews app-wide. */
         previewLutId?: string | null;
+        /** Default preferred LUT for newly uploaded D-Log media. */
+        defaultDLogLutId?: string | null;
+        /** Default preferred LUT for newly uploaded D-Log M media. */
+        defaultDLogMLutId?: string | null;
         portfolio?: {
           coverAssetId?: string | null;
           featuredAlbumIds?: string[];

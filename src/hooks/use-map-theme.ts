@@ -9,7 +9,9 @@ import {
 
 /** Follows the app light/dark class on <html>. */
 export function useMapTheme(): MapTheme {
-  const [theme, setTheme] = useState<MapTheme>("light");
+  const [theme, setTheme] = useState<MapTheme>(() =>
+    typeof document !== "undefined" ? readDocumentMapTheme() : "light",
+  );
 
   useEffect(() => {
     const sync = () => setTheme(readDocumentMapTheme());

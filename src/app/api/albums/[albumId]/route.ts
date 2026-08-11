@@ -17,19 +17,28 @@ const updateSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ albumId: string }> },
 ) {
   try {
     const session = await requireApprovedSession();
     const { albumId } = await context.params;
-    const album = await getAlbumForUser(session.user.id, albumId);
+    const url = new URL(request.url);
+    const limitRaw = url.searchParams.get("limit");
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+    const parsedLimit = limitRaw ? Number(limitRaw) : 48;
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 48;
+
+    const album = await getAlbumForUser(session.user.id, albumId, {
+      limit,
+      cursor,
+    });
 
     if (!album) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ album });
+    return NextResponse.json({ album, nextCursor: album.nextCursor });
   } catch (error) {
     return jsonError(error);
   }

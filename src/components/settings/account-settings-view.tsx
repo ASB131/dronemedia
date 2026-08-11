@@ -13,6 +13,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PreviewLutPicker } from "@/components/assets/preview-lut-picker";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -51,6 +52,8 @@ type AccountPayload = {
     notificationsEnabled: boolean;
     defaultPlaybackResolution: "1080" | "1440" | "source";
     previewLutId: string | null;
+    defaultDLogLutId: string | null;
+    defaultDLogMLutId: string | null;
   };
 };
 
@@ -462,6 +465,36 @@ export function AccountSettingsView() {
                       {label}
                     </button>
                   ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-sm font-semibold">Default LUTs</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Newly uploaded videos tagged as D-Log or D-Log M get this LUT
+                  assigned automatically. You can change it per clip later.
+                </p>
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-2.5">
+                    <PreviewLutPicker
+                      colorProfile="d_log"
+                      labelPrefix="Default"
+                      value={account.preferences.defaultDLogLutId}
+                      onChange={(lutId) =>
+                        void savePreferences({ defaultDLogLutId: lutId })
+                      }
+                    />
+                  </div>
+                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-2.5">
+                    <PreviewLutPicker
+                      colorProfile="d_logm"
+                      labelPrefix="Default"
+                      value={account.preferences.defaultDLogMLutId}
+                      onChange={(lutId) =>
+                        void savePreferences({ defaultDLogMLutId: lutId })
+                      }
+                    />
+                  </div>
                 </div>
               </section>
 

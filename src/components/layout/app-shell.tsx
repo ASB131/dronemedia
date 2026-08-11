@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0";
 const PIN_SESSION_KEY = "dm-pin-unlocked";
 
 export type AppShellUser = {

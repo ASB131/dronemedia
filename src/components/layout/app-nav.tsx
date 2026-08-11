@@ -10,7 +10,6 @@ import {
   Image as ImageIcon,
   Map,
   Plane,
-  Search,
   Settings,
   Shield,
   Trash2,
@@ -35,7 +34,6 @@ const navSections: NavSection[] = [
     title: "Library",
     items: [
       { label: "Photos", href: "/", icon: ImageIcon },
-      { label: "Search", href: "/search", icon: Search },
       { label: "Favorites", href: "/favorites", icon: Heart },
       { label: "Albums", href: "/albums", icon: Album },
       { label: "Bin", href: "/bin", icon: Trash2 },

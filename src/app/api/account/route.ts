@@ -40,6 +40,8 @@ export async function GET() {
         ? storedResolution
         : DEFAULT_PLAYBACK_RESOLUTION,
       previewLutId: user.preferences?.previewLutId ?? null,
+      defaultDLogLutId: user.preferences?.defaultDLogLutId ?? null,
+      defaultDLogMLutId: user.preferences?.defaultDLogMLutId ?? null,
     };
 
     return NextResponse.json({

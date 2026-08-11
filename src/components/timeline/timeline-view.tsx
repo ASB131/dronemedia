@@ -17,7 +17,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { MediaGridSkeleton } from "@/components/ui/skeletons";
-import { TimelineHoverMiniMap } from "@/components/timeline/timeline-hover-minimap";
 import type {
   OnThisDayGroupDto,
   TimelineAssetDto,
@@ -34,6 +33,8 @@ import {
 } from "@/lib/navigation/media-return";
 import { cn } from "@/lib/utils";
 
+const VIDEO_HOVER_PREVIEW_MS = 1000;
+
 function AssetTile({
   asset,
   selected,
@@ -41,7 +42,6 @@ function AssetTile({
   onToggle,
   onQuickSelect,
   onOpen,
-  onPreview,
 }: {
   asset: TimelineAssetDto;
   selected: boolean;
@@ -49,17 +49,49 @@ function AssetTile({
   onToggle: (shiftKey: boolean) => void;
   onQuickSelect: (shiftKey: boolean) => void;
   onOpen?: () => void;
-  onPreview?: (asset: TimelineAssetDto | null) => void;
 }) {
   const [thumbLoaded, setThumbLoaded] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [previewArmed, setPreviewArmed] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aspectRatio = asset.aspectRatio > 0 ? asset.aspectRatio : 16 / 9;
   const showCheck = selectMode || selected;
+  const canHoverPreview = asset.assetType === "video";
 
   useEffect(() => {
     setThumbLoaded(false);
     setThumbFailed(false);
+    setPreviewArmed(false);
+    setPreviewReady(false);
+    if (previewTimer.current) {
+      clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+    }
   }, [asset.id]);
+
+  useEffect(() => {
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, []);
+
+  function armHoverPreview() {
+    if (!canHoverPreview) return;
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => {
+      setPreviewArmed(true);
+    }, VIDEO_HOVER_PREVIEW_MS);
+  }
+
+  function disarmHoverPreview() {
+    if (previewTimer.current) {
+      clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+    }
+    setPreviewArmed(false);
+    setPreviewReady(false);
+  }
 
   const checkControl = (
     <button
@@ -99,9 +131,10 @@ function AssetTile({
           src={`/api/assets/${asset.id}/thumbnail`}
           alt=""
           className={cn(
-            "size-full object-cover transition duration-150 group-hover:brightness-75",
+            "size-full object-cover transition duration-500 group-hover:brightness-75",
             "opacity-0 transition-opacity duration-300",
             thumbLoaded && "opacity-100",
+            previewReady && "opacity-0 group-hover:brightness-100",
           )}
           loading="lazy"
           onLoad={() => setThumbLoaded(true)}
@@ -109,7 +142,33 @@ function AssetTile({
         />
       )}
 
-      <span className="pointer-events-none absolute bottom-1 left-1 inline-flex items-center gap-0.5 rounded bg-black/55 px-1 py-0.5 text-[10px] text-white shadow-sm">
+      {previewArmed ? (
+        <video
+          key={asset.id}
+          src={`/api/assets/${asset.id}/original`}
+          muted
+          loop
+          playsInline
+          preload="auto"
+          className={cn(
+            "pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-500",
+            previewReady ? "opacity-100" : "opacity-0",
+          )}
+          onLoadedData={(event) => {
+            setPreviewReady(true);
+            void event.currentTarget.play().catch(() => {
+              setPreviewArmed(false);
+              setPreviewReady(false);
+            });
+          }}
+          onError={() => {
+            setPreviewArmed(false);
+            setPreviewReady(false);
+          }}
+        />
+      ) : null}
+
+      <span className="pointer-events-none absolute bottom-1 left-1 z-[1] inline-flex items-center gap-0.5 rounded bg-black/55 px-1 py-0.5 text-[10px] text-white shadow-sm">
         {asset.panoramaBadge ? (
           <span aria-label={asset.panoramaBadge}>{asset.panoramaBadge}</span>
         ) : asset.assetType === "video" ? (
@@ -126,7 +185,7 @@ function AssetTile({
         )}
       </span>
 
-      <span className="absolute right-1 top-1 inline-flex items-center gap-0.5">
+      <span className="absolute right-1 top-1 z-[1] inline-flex items-center gap-0.5">
         {asset.isPublic ? (
           <Globe2 className="size-3.5 text-sky-300 drop-shadow" aria-label="Public" />
         ) : null}
@@ -137,7 +196,7 @@ function AssetTile({
 
       {checkControl}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-1.5 pb-1.5 pt-6 opacity-0 transition duration-150 group-hover:translate-y-0 group-hover:opacity-100">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] translate-y-1 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-1.5 pb-1.5 pt-6 opacity-0 transition duration-150 group-hover:translate-y-0 group-hover:opacity-100">
         <p className="truncate text-[11px] font-medium text-white">
           {asset.displayName}
         </p>
@@ -156,10 +215,8 @@ function AssetTile({
       <button
         type="button"
         onClick={(event) => onToggle(event.shiftKey)}
-        onMouseEnter={() => onPreview?.(asset)}
-        onMouseLeave={() => onPreview?.(null)}
-        onFocus={() => onPreview?.(asset)}
-        onBlur={() => onPreview?.(null)}
+        onMouseEnter={armHoverPreview}
+        onMouseLeave={disarmHoverPreview}
         className={tileClass}
         style={tileStyle}
       >
@@ -174,10 +231,8 @@ function AssetTile({
       className={tileClass}
       style={tileStyle}
       onClick={() => onOpen?.()}
-      onMouseEnter={() => onPreview?.(asset)}
-      onMouseLeave={() => onPreview?.(null)}
-      onFocus={() => onPreview?.(asset)}
-      onBlur={() => onPreview?.(null)}
+      onMouseEnter={armHoverPreview}
+      onMouseLeave={disarmHoverPreview}
     >
       {content}
     </Link>
@@ -282,20 +337,6 @@ export function TimelineView({
   }>({ year: null, monthLabel: null });
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
-  const [hoverAsset, setHoverAsset] = useState<TimelineAssetDto | null>(null);
-  const hoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const previewAsset = useCallback((asset: TimelineAssetDto | null) => {
-    if (hoverClearTimer.current) {
-      clearTimeout(hoverClearTimer.current);
-      hoverClearTimer.current = null;
-    }
-    if (asset) {
-      setHoverAsset(asset);
-      return;
-    }
-    hoverClearTimer.current = setTimeout(() => setHoverAsset(null), 180);
-  }, []);
 
   const loadTimeline = useCallback(async (cursor?: string) => {
     const searchParams = new URLSearchParams({ limit: "80" });
@@ -872,15 +913,7 @@ export function TimelineView({
                     </h3>
                   ) : null}
                   {item.type === "section" ? (
-                    <section
-                      className="pb-5"
-                      onMouseEnter={() => {
-                        const geo = item.section.assets.find(
-                          (asset) => asset.location || asset.hasFlightPath,
-                        );
-                        if (geo) previewAsset(geo);
-                      }}
-                    >
+                    <section className="pb-5">
                       <p className="mb-2.5 text-sm font-semibold text-foreground/90">
                         {item.section.dateLabel}
                       </p>
@@ -896,7 +929,6 @@ export function TimelineView({
                               quickSelect(asset.id, shiftKey)
                             }
                             onOpen={() => rememberAssetOpen(asset.id)}
-                            onPreview={previewAsset}
                           />
                         ))}
                       </div>
@@ -918,31 +950,6 @@ export function TimelineView({
             </div>
           ) : null}
         </div>
-
-        <aside className="pointer-events-none absolute bottom-4 right-4 z-20 hidden w-56 xl:block">
-          <div
-            className={cn(
-              "pointer-events-auto overflow-hidden rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur transition duration-200",
-              hoverAsset ? "opacity-100" : "opacity-70",
-            )}
-            onMouseEnter={() => {
-              if (hoverAsset) previewAsset(hoverAsset);
-            }}
-            onMouseLeave={() => previewAsset(null)}
-          >
-            <TimelineHoverMiniMap
-              assetId={hoverAsset?.id ?? null}
-              location={hoverAsset?.location ?? null}
-              hasFlightPath={hoverAsset?.hasFlightPath}
-              className="aspect-square w-full"
-            />
-            <p className="truncate border-t border-border px-2.5 py-1.5 text-[11px] text-muted-foreground">
-              {hoverAsset
-                ? hoverAsset.displayName
-                : "Hover media for map preview"}
-            </p>
-          </div>
-        </aside>
         </div>
 
         {scrubMarkers.length > 0 ? (

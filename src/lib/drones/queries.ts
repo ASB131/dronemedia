@@ -1,6 +1,7 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 
 import type { MediaMetadata } from "@/lib/assets/media-metadata";
+import { getEffectiveCaptureDate } from "@/lib/assets/capture";
 import { panoramaViewerBadgeLabel } from "@/lib/assets/panorama-viewer-mode";
 import { effectivePanoramaViewerSql } from "@/lib/drones/pano-sql";
 import {
@@ -119,11 +120,58 @@ export async function listDronesForUser(userId: string): Promise<DroneDto[]> {
   });
 }
 
+type DroneAssetCursor = {
+  capturedAt: string;
+  id: string;
+};
+
+function decodeDroneAssetCursor(cursor: string): DroneAssetCursor {
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    );
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("capturedAt" in parsed) ||
+      !("id" in parsed) ||
+      typeof (parsed as DroneAssetCursor).capturedAt !== "string" ||
+      typeof (parsed as DroneAssetCursor).id !== "string"
+    ) {
+      throw new Error("Invalid drone asset cursor");
+    }
+    const capturedAt = new Date((parsed as DroneAssetCursor).capturedAt);
+    if (Number.isNaN(capturedAt.getTime())) {
+      throw new Error("Invalid drone asset cursor");
+    }
+    return {
+      capturedAt: (parsed as DroneAssetCursor).capturedAt,
+      id: (parsed as DroneAssetCursor).id,
+    };
+  } catch {
+    throw new Error("Invalid drone asset cursor");
+  }
+}
+
+function encodeDroneAssetCursor(row: {
+  id: string;
+  capturedAtOverride: Date | null;
+  capturedAtOriginal: Date | null;
+  createdAt: Date;
+}): string {
+  return Buffer.from(
+    JSON.stringify({
+      capturedAt: getEffectiveCaptureDate(row).toISOString(),
+      id: row.id,
+    }),
+  ).toString("base64url");
+}
+
 export async function listAssetsForDrone(
   userId: string,
   droneId: string,
-  options?: { limit?: number },
-): Promise<DroneAssetDto[] | null> {
+  options?: { limit?: number; cursor?: string },
+): Promise<{ assets: DroneAssetDto[]; nextCursor: string | null } | null> {
   const db = getWebDb();
   const [owned] = await db
     .select({ id: drones.id })
@@ -132,7 +180,28 @@ export async function listAssetsForDrone(
     .limit(1);
   if (!owned) return null;
 
-  const limit = Math.min(Math.max(options?.limit ?? 500, 1), 1000);
+  const limit = Math.min(Math.max(options?.limit ?? 48, 1), 100);
+  const capturedAtExpr = sql`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`;
+  const conditions = [
+    eq(assets.userId, userId),
+    eq(assets.droneId, droneId),
+    isNull(assets.deletedAt),
+  ];
+
+  if (options?.cursor) {
+    const cursor = decodeDroneAssetCursor(options.cursor);
+    const cursorCapturedAt = new Date(cursor.capturedAt);
+    conditions.push(
+      or(
+        sql`${capturedAtExpr} < ${cursorCapturedAt}`,
+        and(
+          sql`${capturedAtExpr} = ${cursorCapturedAt}`,
+          sql`${assets.id} < ${cursor.id}`,
+        ),
+      )!,
+    );
+  }
+
   const rows = await db
     .select({
       id: assets.id,
@@ -145,37 +214,33 @@ export async function listAssetsForDrone(
       createdAt: assets.createdAt,
     })
     .from(assets)
-    .where(
-      and(
-        eq(assets.userId, userId),
-        eq(assets.droneId, droneId),
-        isNull(assets.deletedAt),
-      ),
-    )
-    .orderBy(
-      desc(
-        sql`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`,
-      ),
-      desc(assets.id),
-    )
-    .limit(limit);
+    .where(and(...conditions))
+    .orderBy(desc(capturedAtExpr), desc(assets.id))
+    .limit(limit + 1);
 
-  return rows.map((row) => {
-    const capturedAt =
-      row.capturedAtOverride ?? row.capturedAtOriginal ?? row.createdAt;
-    return {
-      id: row.id,
-      displayName: row.displayName,
-      assetType: row.assetType,
-      sequenceKind: row.sequenceKind,
-      capturedAt: capturedAt ? capturedAt.toISOString() : null,
-      panoramaBadge: panoramaViewerBadgeLabel({
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const last = pageRows.at(-1);
+
+  return {
+    assets: pageRows.map((row) => {
+      const capturedAt =
+        row.capturedAtOverride ?? row.capturedAtOriginal ?? row.createdAt;
+      return {
+        id: row.id,
+        displayName: row.displayName,
         assetType: row.assetType,
         sequenceKind: row.sequenceKind,
-        mediaMetadata: row.mediaMetadata as MediaMetadata | null,
-      }),
-    };
-  });
+        capturedAt: capturedAt ? capturedAt.toISOString() : null,
+        panoramaBadge: panoramaViewerBadgeLabel({
+          assetType: row.assetType,
+          sequenceKind: row.sequenceKind,
+          mediaMetadata: row.mediaMetadata as MediaMetadata | null,
+        }),
+      };
+    }),
+    nextCursor: hasMore && last ? encodeDroneAssetCursor(last) : null,
+  };
 }
 
 export async function getDroneForUser(userId: string, droneId: string) {

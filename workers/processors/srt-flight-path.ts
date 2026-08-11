@@ -250,6 +250,19 @@ export function createSrtFlightPathWorker(connection: { url: string }) {
         .set(assetUpdates)
         .where(and(eq(assets.id, assetId), isNull(assets.deletedAt)));
 
+      const { applyDefaultPreferredLutIfNeeded } = await import(
+        "@/lib/luts/apply-default-preferred"
+      );
+      await applyDefaultPreferredLutIfNeeded(db, {
+        userId,
+        assetId,
+        mediaMetadata:
+          (assetUpdates.mediaMetadata as
+            | import("@/lib/assets/media-metadata").MediaMetadata
+            | undefined) ?? undefined,
+        requeueThumbnail: true,
+      });
+
       const flightId = await assignAssetToFlight(db, assetId);
       if (flightId) {
         await attachNearbyPhotosToFlight(db, flightId);

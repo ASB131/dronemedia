@@ -14,8 +14,11 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import { MediaGridSkeleton } from "@/components/ui/skeletons";
 import type { DroneAssetDto, DroneDto } from "@/lib/drones/queries";
+
+const DRONE_ASSETS_PAGE = 48;
 
 function formatHours(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0h";
@@ -73,7 +76,9 @@ export function DronesPanel() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assets, setAssets] = useState<DroneAssetDto[]>([]);
+  const [assetsNextCursor, setAssetsNextCursor] = useState<string | null>(null);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsLoadingMore, setAssetsLoadingMore] = useState(false);
   const [name, setName] = useState("");
   const [model, setModel] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
@@ -105,26 +110,37 @@ export function DronesPanel() {
   useEffect(() => {
     if (!selectedId) {
       setAssets([]);
+      setAssetsNextCursor(null);
       return;
     }
     let mounted = true;
     setAssetsLoading(true);
+    setAssets([]);
+    setAssetsNextCursor(null);
 
     async function loadAssets() {
+      const params = new URLSearchParams({
+        limit: String(DRONE_ASSETS_PAGE),
+      });
       const response = await fetch(
-        `/api/drones/${encodeURIComponent(selectedId!)}/assets`,
+        `/api/drones/${encodeURIComponent(selectedId!)}/assets?${params}`,
       );
       if (!response.ok) {
         if (mounted) {
           setAssets([]);
+          setAssetsNextCursor(null);
           setAssetsLoading(false);
           setError("Failed to load drone media");
         }
         return;
       }
-      const payload = (await response.json()) as { assets: DroneAssetDto[] };
+      const payload = (await response.json()) as {
+        assets: DroneAssetDto[];
+        nextCursor: string | null;
+      };
       if (mounted) {
         setAssets(payload.assets);
+        setAssetsNextCursor(payload.nextCursor);
         setAssetsLoading(false);
       }
     }
@@ -134,6 +150,31 @@ export function DronesPanel() {
       mounted = false;
     };
   }, [selectedId]);
+
+  async function loadMoreAssets() {
+    if (!selectedId || !assetsNextCursor || assetsLoadingMore) return;
+    setAssetsLoadingMore(true);
+    const params = new URLSearchParams({
+      limit: String(DRONE_ASSETS_PAGE),
+      cursor: assetsNextCursor,
+    });
+    try {
+      const response = await fetch(
+        `/api/drones/${encodeURIComponent(selectedId)}/assets?${params}`,
+      );
+      if (!response.ok) throw new Error("Failed to load drone media");
+      const payload = (await response.json()) as {
+        assets: DroneAssetDto[];
+        nextCursor: string | null;
+      };
+      setAssets((current) => [...current, ...payload.assets]);
+      setAssetsNextCursor(payload.nextCursor);
+    } catch {
+      setError("Failed to load more drone media");
+    } finally {
+      setAssetsLoadingMore(false);
+    }
+  }
 
   const selected = drones.find((drone) => drone.id === selectedId) ?? null;
 
@@ -343,33 +384,41 @@ export function DronesPanel() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-                {assets.map((asset) => (
-                  <Link
-                    key={asset.id}
-                    href={`/assets/${asset.id}`}
-                    className="group relative aspect-square overflow-hidden rounded-md bg-muted"
-                    title={asset.displayName}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/assets/${asset.id}/thumbnail`}
-                      alt={asset.displayName}
-                      className="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
-                    />
-                    <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                      {asset.assetType === "video" ? (
-                        <Film className="size-3" />
-                      ) : (
-                        <ImageIcon className="size-3" />
-                      )}
-                      {asset.panoramaBadge ? (
-                        <span>{asset.panoramaBadge}</span>
-                      ) : null}
-                    </span>
-                  </Link>
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-3 gap-1 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+                  {assets.map((asset) => (
+                    <Link
+                      key={asset.id}
+                      href={`/assets/${asset.id}`}
+                      className="group relative aspect-square overflow-hidden rounded-md bg-muted"
+                      title={asset.displayName}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/assets/${asset.id}/thumbnail`}
+                        alt={asset.displayName}
+                        className="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
+                        loading="lazy"
+                      />
+                      <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                        {asset.assetType === "video" ? (
+                          <Film className="size-3" />
+                        ) : (
+                          <ImageIcon className="size-3" />
+                        )}
+                        {asset.panoramaBadge ? (
+                          <span>{asset.panoramaBadge}</span>
+                        ) : null}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+                <InfiniteScrollSentinel
+                  enabled={Boolean(assetsNextCursor)}
+                  loading={assetsLoadingMore}
+                  onLoadMore={() => void loadMoreAssets()}
+                />
+              </>
             )}
           </section>
         </div>

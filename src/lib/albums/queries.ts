@@ -22,17 +22,65 @@ export type AlbumMemberDto = {
   createdAt: string;
 };
 
+export type AlbumAssetDto = {
+  id: string;
+  displayName: string;
+  assetType: "photo" | "video" | "sequence";
+  addedAt: string;
+};
+
 export type AlbumDetailDto = AlbumSummaryDto & {
   canEdit: boolean;
   canManageMembers: boolean;
   members: AlbumMemberDto[];
-  assets: Array<{
-    id: string;
-    displayName: string;
-    assetType: "photo" | "video" | "sequence";
-    addedAt: string;
-  }>;
+  assets: AlbumAssetDto[];
+  nextCursor: string | null;
 };
+
+type AlbumAssetCursor = {
+  addedAt: string;
+  id: string;
+};
+
+function decodeAlbumAssetCursor(cursor: string): AlbumAssetCursor {
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    );
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("addedAt" in parsed) ||
+      !("id" in parsed) ||
+      typeof (parsed as AlbumAssetCursor).addedAt !== "string" ||
+      typeof (parsed as AlbumAssetCursor).id !== "string"
+    ) {
+      throw new Error("Invalid album cursor");
+    }
+    const addedAt = new Date((parsed as AlbumAssetCursor).addedAt);
+    if (Number.isNaN(addedAt.getTime())) {
+      throw new Error("Invalid album cursor");
+    }
+    return {
+      addedAt: (parsed as AlbumAssetCursor).addedAt,
+      id: (parsed as AlbumAssetCursor).id,
+    };
+  } catch {
+    throw new Error("Invalid album cursor");
+  }
+}
+
+function encodeAlbumAssetCursor(row: {
+  id: string;
+  addedAt: Date;
+}): string {
+  return Buffer.from(
+    JSON.stringify({
+      addedAt: row.addedAt.toISOString(),
+      id: row.id,
+    }),
+  ).toString("base64url");
+}
 
 export async function listAlbumsForUser(userId: string): Promise<AlbumSummaryDto[]> {
   const db = getWebDb();
@@ -86,6 +134,7 @@ export async function listAlbumsForUser(userId: string): Promise<AlbumSummaryDto
 export async function getAlbumForUser(
   userId: string,
   albumId: string,
+  options?: { limit?: number; cursor?: string },
 ): Promise<AlbumDetailDto | null> {
   const access = await getAlbumAccess(userId, albumId);
   if (!access) return null;
@@ -106,7 +155,47 @@ export async function getAlbumForUser(
 
   if (!album) return null;
 
-  const assetRows = await db
+  const [{ assetCount }] = await db
+    .select({
+      assetCount: sql<number>`count(*)::int`,
+    })
+    .from(albumAssets)
+    .innerJoin(assets, eq(assets.id, albumAssets.assetId))
+    .where(and(eq(albumAssets.albumId, albumId), isNull(assets.deletedAt)));
+
+  const [cover] = await db
+    .select({ id: assets.id })
+    .from(albumAssets)
+    .innerJoin(assets, eq(assets.id, albumAssets.assetId))
+    .where(and(eq(albumAssets.albumId, albumId), isNull(assets.deletedAt)))
+    .orderBy(desc(albumAssets.addedAt), desc(assets.id))
+    .limit(1);
+
+  const limit =
+    options?.limit != null
+      ? Math.min(Math.max(options.limit, 1), 100)
+      : null;
+
+  const conditions = [
+    eq(albumAssets.albumId, albumId),
+    isNull(assets.deletedAt),
+  ];
+
+  if (options?.cursor) {
+    const cursor = decodeAlbumAssetCursor(options.cursor);
+    const cursorAddedAt = new Date(cursor.addedAt);
+    conditions.push(
+      or(
+        sql`${albumAssets.addedAt} < ${cursorAddedAt}`,
+        and(
+          eq(albumAssets.addedAt, cursorAddedAt),
+          sql`${assets.id} < ${cursor.id}`,
+        ),
+      )!,
+    );
+  }
+
+  const assetQuery = db
     .select({
       id: assets.id,
       displayName: assets.displayName,
@@ -115,8 +204,17 @@ export async function getAlbumForUser(
     })
     .from(albumAssets)
     .innerJoin(assets, eq(assets.id, albumAssets.assetId))
-    .where(and(eq(albumAssets.albumId, albumId), isNull(assets.deletedAt)))
-    .orderBy(desc(albumAssets.addedAt));
+    .where(and(...conditions))
+    .orderBy(desc(albumAssets.addedAt), desc(assets.id));
+
+  const assetRows =
+    limit != null
+      ? await assetQuery.limit(limit + 1)
+      : await assetQuery;
+
+  const hasMore = limit != null && assetRows.length > limit;
+  const pageRows = hasMore ? assetRows.slice(0, limit) : assetRows;
+  const last = pageRows.at(-1);
 
   const members = await listAlbumMembers(albumId);
 
@@ -124,20 +222,24 @@ export async function getAlbumForUser(
     id: album.id,
     name: album.name,
     description: album.description,
-    assetCount: assetRows.length,
+    assetCount: Number(assetCount ?? 0),
     createdAt: album.createdAt.toISOString(),
     role: access.role,
     ownerUsername: album.ownerUsername,
-    coverAssetId: assetRows[0]?.id ?? null,
+    coverAssetId: cover?.id ?? null,
     canEdit: access.canEdit,
     canManageMembers: access.canManageMembers,
     members,
-    assets: assetRows.map((row) => ({
+    assets: pageRows.map((row) => ({
       id: row.id,
       displayName: row.displayName,
       assetType: row.assetType,
       addedAt: row.addedAt.toISOString(),
     })),
+    nextCursor:
+      hasMore && last
+        ? encodeAlbumAssetCursor({ id: last.id, addedAt: last.addedAt })
+        : null,
   };
 }
 

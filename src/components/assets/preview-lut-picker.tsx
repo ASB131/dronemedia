@@ -20,12 +20,14 @@ export function PreviewLutPicker({
   onChange,
   className,
   compact = false,
+  labelPrefix = "Preview LUT",
 }: {
   colorProfile: LutColorProfile;
   value: string | null;
   onChange: (lutId: string | null) => void;
   className?: string;
   compact?: boolean;
+  labelPrefix?: string;
 }) {
   const [options, setOptions] = useState<LutOption[]>([]);
 
@@ -52,7 +54,9 @@ export function PreviewLutPicker({
       )}
     >
       <span className="shrink-0">
-        {compact ? "LUT" : `Preview LUT (${lutColorProfileLabel(colorProfile)})`}
+        {compact
+          ? "LUT"
+          : `${labelPrefix} (${lutColorProfileLabel(colorProfile)})`}
       </span>
       <select
         value={value ?? ""}

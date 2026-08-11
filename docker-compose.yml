@@ -93,7 +93,7 @@ services:
       MEDIA_PATH: /data/media
       CONFIG_PATH: /app/config.yml
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_VERSION: ${APP_VERSION:-0.1.0}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
       RUN_MIGRATIONS: "false"
       NODE_OPTIONS: ${APP_NODE_OPTIONS:---max-old-space-size=2048}
     ports:

@@ -453,7 +453,34 @@ export async function listFlightsForUser(
       maxAltitudeMeters: flights.maxAltitudeMeters,
       totalDurationSeconds: flights.totalDurationSeconds,
       droneId: flights.droneId,
-      droneName: drones.name,
+      droneName: sql<string | null>`(
+        select d.name
+        from drones d
+        where d.id = coalesce(
+          ${flights.droneId},
+          (
+            select a.drone_id
+            from assets a
+            where a.flight_id = ${flights.id}
+              and a.deleted_at is null
+              and a.drone_id is not null
+            order by coalesce(a.captured_at_override, a.captured_at_original) asc nulls last
+            limit 1
+          )
+        )
+      )`,
+      resolvedDroneId: sql<string | null>`coalesce(
+        ${flights.droneId},
+        (
+          select a.drone_id
+          from assets a
+          where a.flight_id = ${flights.id}
+            and a.deleted_at is null
+            and a.drone_id is not null
+          order by coalesce(a.captured_at_override, a.captured_at_original) asc nulls last
+          limit 1
+        )
+      )`,
       assetCount: sql<number>`count(${assets.id})::int`,
       coverAssetId: sql<string | null>`(
         select cover.id
@@ -483,13 +510,12 @@ export async function listFlightsForUser(
       )`,
     })
     .from(flights)
-    .leftJoin(drones, eq(drones.id, flights.droneId))
     .leftJoin(
       assets,
       and(eq(assets.flightId, flights.id), isNull(assets.deletedAt)),
     )
     .where(eq(flights.userId, userId))
-    .groupBy(flights.id, drones.name)
+    .groupBy(flights.id)
     .having(sql`count(${assets.id}) > 0`)
     .orderBy(desc(flights.startTime));
 
@@ -511,7 +537,7 @@ export async function listFlightsForUser(
         row.totalDurationSeconds != null
           ? Number(row.totalDurationSeconds)
           : null,
-      droneId: row.droneId,
+      droneId: row.resolvedDroneId ?? row.droneId,
       droneName: row.droneName ?? null,
       coverAssetId: row.coverAssetId,
       location:
