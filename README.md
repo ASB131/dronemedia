@@ -23,7 +23,7 @@ Drone Media is a multi-user web app for keeping aerial media organized at home. 
 
 ### Timeline
 
-Date-grouped photos and videos in the main library.
+Date-grouped library with type filters and media badges on each tile.
 
 ![Library timeline](docs/screenshots/timeline.png)
 
@@ -33,17 +33,35 @@ Watch clips with metadata, linked SRT/LRF, and the telemetry path on a map.
 
 ![Asset playback](docs/screenshots/playback.png)
 
+### Panorama
+
+Interactive 360° panoramas with a heading cue and look-direction cone on the location map.
+
+![Panorama viewer](docs/screenshots/panorama.png)
+
 ### Map
 
-Geotagged media on a world map, with clusters where shots overlap.
+Geotagged media with clusters and corner badges for photo, video, and panorama markers.
 
 ![Map view](docs/screenshots/map.png)
+
+### Flight
+
+Multi-clip flights with a bottom media strip, live path map, and altitude telemetry.
+
+![Flight detail](docs/screenshots/flight.png)
 
 ### Upload
 
 Import from an SD card or drone folder — linked basenames and sequences are grouped before you copy into the library.
 
 ![Upload and SD import](docs/screenshots/upload.png)
+
+### Upload progress
+
+A compact upload dock keeps transfers visible while you browse the rest of the library.
+
+![Upload dock](docs/screenshots/upload-dock.png)
 
 ### Processing
 
@@ -54,7 +72,10 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 ## At a glance
 
 - Chunked uploads with basename grouping (video + SRT + LRF, hyperlapse / panorama folders)
+- Background upload dock so you can keep browsing while transfers finish
 - Timeline, map, flights, albums, drones, favorites, and bin
+- Stitched panoramas with 360° viewing and compass heading when EXIF/DJI yaw is present
+- Map markers with media-type badges; asset mini-map shows a look-direction cone for photos/panos
 - HLS adaptive playback from cache; **Source** in the player only after a streaming preview exists (download always available)
 - Photo **Web** previews on cache; full originals for download
 - Community profiles and a shared public map
@@ -73,9 +94,11 @@ AGPL-3.0 — see [LICENSE](./LICENSE).
 - **Library** — timeline, map, flights, albums, drones, favorites, bin
 - **Playback** — HLS adaptive streaming (1080p / 1440p / Auto) from regenerable cache; **Source** plays the original from media storage
 - **Photos** — in-app **Web** preview from cache; **Source** / download use full originals
+- **Panoramas** — DJI-style stitch, 360° viewer, heading tape, and map look cone when yaw tags exist
+- **Flights** — grouped clips with shared path map, altitude graph, and per-clip media strip
 - **Community** — discover public profiles and a shared map (`/community`); open media on `/u/{username}`
 - **Admin** — users, invites, integrity, storage report, settings, backups, failed jobs; **Jobs** tab to pause/enable transcoding (and panorama stitch) globally, view all-users queues, and backfill when re-enabled
-- **Upload** — chunked resumable uploads with basename grouping (MP4 + SRT + LRF)
+- **Upload** — chunked resumable uploads with basename grouping (MP4 + SRT + LRF) and a persistent progress dock
 
 While transcoding is paused, Live Processing finishes after metadata (no Transcoding spam). Users see deferred items under **Utilities → Jobs** as “Waiting to transcode.” Videos without a streaming preview show a status message instead of playing Source in the player.
 
