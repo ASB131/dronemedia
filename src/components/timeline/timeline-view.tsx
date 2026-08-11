@@ -685,8 +685,8 @@ export function TimelineView({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <h1 className="mr-auto text-lg font-semibold">
           {favoritesOnly ? "Favorites" : "Photos / Videos"}
         </h1>
@@ -729,7 +729,7 @@ export function TimelineView({
       </div>
 
       {selectMode ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
           <span className="text-xs text-muted-foreground">
             {selected.size} selected
           </span>
@@ -849,7 +849,7 @@ export function TimelineView({
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {(stickyHeader.year ||
           stickyHeader.monthLabel ||
           stickyHeader.dayLabel) && (
@@ -872,8 +872,10 @@ export function TimelineView({
           </div>
         )}
 
-        <div className="relative flex min-h-0 flex-1">
-        <div ref={parentRef} className="h-full min-w-0 flex-1 overflow-auto px-3 py-3 pr-8 pt-16">
+        <div
+          ref={parentRef}
+          className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pr-8 pt-16"
+        >
           <OnThisDayPanel
             groups={data.onThisDay}
             onOpen={rememberAssetOpen}
@@ -950,15 +952,14 @@ export function TimelineView({
             </div>
           ) : null}
         </div>
-        </div>
 
         {scrubMarkers.length > 0 ? (
           <div
             className={cn(
               "pointer-events-none absolute inset-y-3 right-1 z-30 flex w-10 flex-col items-end transition-opacity duration-200",
-              scrubVisible ? "opacity-100" : "opacity-0",
+              scrubVisible ? "opacity-100" : "opacity-40",
             )}
-            aria-hidden={!scrubVisible}
+            aria-hidden={false}
           >
             <div className="relative h-full w-full">
               {scrubVisible && scrubLabel.year ? (

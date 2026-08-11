@@ -12,6 +12,7 @@ import {
   layoutColocatedPositions,
 } from "@/lib/map/colocated-layout";
 import { basemapTileUrl } from "@/lib/map/tiles";
+import { thumbnailMarkerHtml as buildThumbnailMarkerHtml } from "@/lib/map/marker-html";
 import type {
   CommunityMapAssetDto,
   CommunityUserDto,
@@ -22,6 +23,10 @@ type ViewMode = "profiles" | "map";
 
 function thumbUrl(username: string, assetId: string) {
   return `/api/public/${encodeURIComponent(username)}/assets/${assetId}/thumbnail`;
+}
+
+function thumbnailMarkerHtml(asset: CommunityMapAssetDto) {
+  return buildThumbnailMarkerHtml(asset, thumbUrl(asset.username, asset.id));
 }
 
 async function loadLeafletWithCluster() {
@@ -57,30 +62,6 @@ async function loadLeafletWithCluster() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     markerClusterGroup: (options?: object) => any;
   };
-}
-
-function thumbnailMarkerHtml(asset: CommunityMapAssetDto) {
-  const title = asset.displayName
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
-  const photoBadge =
-    asset.assetType === "photo"
-      ? `<span class="dm-map-marker-badge dm-map-marker-badge-photo" title="Photo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-            <circle cx="12" cy="13" r="4"/>
-          </svg>
-        </span>`
-      : "";
-  return `
-    <div class="dm-map-marker-root" title="${title}">
-      <div class="dm-map-marker">
-        <img src="${thumbUrl(asset.username, asset.id)}" alt="" />
-      </div>
-      ${photoBadge}
-    </div>
-  `;
 }
 
 export function CommunityView() {

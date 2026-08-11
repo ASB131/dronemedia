@@ -43,6 +43,61 @@ function photoIconHtml() {
   </div>`;
 }
 
+/** Destination [lat, lng] for compass bearing (0=N) and distance in meters. */
+function destinationLatLng(
+  lat: number,
+  lng: number,
+  bearingDegrees: number,
+  distanceMeters: number,
+): [number, number] {
+  const R = 6371000;
+  const δ = distanceMeters / R;
+  const θ = (bearingDegrees * Math.PI) / 180;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lng * Math.PI) / 180;
+  const sinφ1 = Math.sin(φ1);
+  const cosφ1 = Math.cos(φ1);
+  const sinδ = Math.sin(δ);
+  const cosδ = Math.cos(δ);
+  const φ2 = Math.asin(sinφ1 * cosδ + cosφ1 * sinδ * Math.cos(θ));
+  const λ2 =
+    λ1 +
+    Math.atan2(Math.sin(θ) * sinδ * cosφ1, cosδ - sinφ1 * Math.sin(φ2));
+  return [(φ2 * 180) / Math.PI, (((λ2 * 180) / Math.PI + 540) % 360) - 180];
+}
+
+/** Approx ground meters per screen pixel at lat/zoom (Web Mercator). */
+function metersPerPixelAt(lat: number, zoom: number): number {
+  return (
+    (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) /
+    Math.pow(2, zoom + 8)
+  );
+}
+
+/**
+ * Facing wedge sized in screen pixels so it stays readable at any zoom.
+ * Not a full camera FOV — just a clear look-direction cue.
+ */
+function headingConeLatLngs(
+  lat: number,
+  lng: number,
+  headingDegrees: number,
+  zoom: number,
+): Array<[number, number]> {
+  const halfAngle = 40;
+  const lengthMeters = Math.max(
+    220,
+    Math.min(3200, metersPerPixelAt(lat, zoom) * 140),
+  );
+  const steps = 10;
+  const points: Array<[number, number]> = [[lat, lng]];
+  for (let i = 0; i <= steps; i++) {
+    const bearing = headingDegrees - halfAngle + (2 * halfAngle * i) / steps;
+    points.push(destinationLatLng(lat, lng, bearing, lengthMeters));
+  }
+  return points;
+}
+
 function resolveSeedView(params: {
   flightPath?: LineStringGeoJson | null;
   pathSegments?: FlightPathSegment[];
@@ -101,6 +156,7 @@ export function FlightPathPreview({
   locationMarkers,
   activeAssetId,
   currentPosition,
+  headingDegrees = null,
   markerKind = "drone",
   onPathClick,
   onMarkerClick,
@@ -111,6 +167,8 @@ export function FlightPathPreview({
   locationMarkers?: FlightLocationMarker[];
   activeAssetId?: string | null;
   currentPosition?: { lat: number; lng: number } | null;
+  /** Compass heading (degrees) for a facing cone; null hides the cone. */
+  headingDegrees?: number | null;
   markerKind?: "drone" | "photo";
   onPathClick?: (lat: number, lng: number) => void;
   onMarkerClick?: (assetId: string) => void;
@@ -120,6 +178,7 @@ export function FlightPathPreview({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<import("leaflet").Map | null>(null);
   const markerRef = useRef<import("leaflet").Marker | null>(null);
+  const headingConeRef = useRef<import("leaflet").Polygon | null>(null);
   const tileLayerRef = useRef<import("leaflet").TileLayer | null>(null);
   const pathsLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const locationsLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
@@ -201,6 +260,7 @@ export function FlightPathPreview({
       mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       markerRef.current = null;
+      headingConeRef.current = null;
       tileLayerRef.current = null;
       pathsLayerRef.current = null;
       locationsLayerRef.current = null;
@@ -400,6 +460,84 @@ export function FlightPathPreview({
     hasLocations,
     locationMarkers,
     activeAssetId,
+  ]);
+
+  // Facing cone for photos/panos when a real EXIF/DJI heading exists
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = window.L;
+    if (!map || !L || !mapReady) return;
+
+    const heading =
+      typeof headingDegrees === "number" && Number.isFinite(headingDegrees)
+        ? ((headingDegrees % 360) + 360) % 360
+        : null;
+
+    const activeMarker =
+      activeAssetId != null
+        ? locationMarkers?.find((m) => m.id === activeAssetId)
+        : undefined;
+    const coneOrigin =
+      currentPosition ??
+      (activeMarker
+        ? { lat: activeMarker.lat, lng: activeMarker.lng }
+        : locationMarkers?.[0]
+          ? { lat: locationMarkers[0].lat, lng: locationMarkers[0].lng }
+          : null);
+
+    const fill =
+      theme === "dark" ? "rgba(56, 189, 248, 0.28)" : "rgba(14, 165, 233, 0.32)";
+    const stroke =
+      theme === "dark" ? "rgba(125, 211, 252, 0.75)" : "rgba(2, 132, 199, 0.7)";
+
+    const redraw = () => {
+      if (heading == null || !coneOrigin) {
+        if (headingConeRef.current) {
+          map.removeLayer(headingConeRef.current);
+          headingConeRef.current = null;
+        }
+        return;
+      }
+
+      const latLngs = headingConeLatLngs(
+        coneOrigin.lat,
+        coneOrigin.lng,
+        heading,
+        map.getZoom(),
+      );
+
+      if (!headingConeRef.current) {
+        headingConeRef.current = L.polygon(latLngs, {
+          color: stroke,
+          weight: 1.75,
+          opacity: 0.95,
+          fillColor: fill,
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(map);
+      } else {
+        headingConeRef.current.setLatLngs(latLngs);
+        headingConeRef.current.setStyle({
+          color: stroke,
+          fillColor: fill,
+        });
+      }
+    };
+
+    redraw();
+    map.on("zoomend", redraw);
+    map.on("zoom", redraw);
+    return () => {
+      map.off("zoomend", redraw);
+      map.off("zoom", redraw);
+    };
+  }, [
+    headingDegrees,
+    currentPosition,
+    locationMarkers,
+    activeAssetId,
+    theme,
+    mapReady,
   ]);
 
   if (!canShow) {

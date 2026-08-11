@@ -321,6 +321,27 @@
   background: #5eead4;
   color: #0a0a0a;
 }
+.dm-map-marker-badge-video {
+  background: #4250af;
+}
+:is(.dark) .dm-map-marker-badge-video {
+  background: #8ab4ff;
+  color: #0a0a0a;
+}
+.dm-map-marker-badge-pano {
+  background: #a16207;
+}
+:is(.dark) .dm-map-marker-badge-pano {
+  background: #fbbf24;
+  color: #0a0a0a;
+}
+.dm-map-marker-badge-sequence {
+  background: #7c3aed;
+}
+:is(.dark) .dm-map-marker-badge-sequence {
+  background: #c4b5fd;
+  color: #0a0a0a;
+}
 .dm-map-cluster {
   display: flex;
   align-items: center;

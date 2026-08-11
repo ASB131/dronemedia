@@ -36,34 +36,14 @@ import {
 import { prepareSmoothPath } from "@/lib/map/path-smooth";
 import { basemapTileUrl } from "@/lib/map/tiles";
 import type { MapAssetDto, MapFlightPathDto } from "@/lib/map/queries";
+import { thumbnailMarkerHtml as buildThumbnailMarkerHtml } from "@/lib/map/marker-html";
 import { MapShellSkeleton } from "@/components/ui/skeletons";
 import { cn } from "@/lib/utils";
 
 type AssetTypeFilter = "all" | "photo" | "video";
 
 function thumbnailMarkerHtml(asset: MapAssetDto) {
-  const thumbUrl = `/api/assets/${asset.id}/thumbnail`;
-  const title = asset.displayName
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
-  const photoBadge =
-    asset.assetType === "photo"
-      ? `<span class="dm-map-marker-badge dm-map-marker-badge-photo" title="Photo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-            <circle cx="12" cy="13" r="4"/>
-          </svg>
-        </span>`
-      : "";
-  return `
-    <div class="dm-map-marker-root" title="${title}">
-      <div class="dm-map-marker">
-        <img src="${thumbUrl}" alt="" />
-      </div>
-      ${photoBadge}
-    </div>
-  `;
+  return buildThumbnailMarkerHtml(asset, `/api/assets/${asset.id}/thumbnail`);
 }
 
 async function loadLeafletWithCluster() {
