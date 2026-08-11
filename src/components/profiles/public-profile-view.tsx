@@ -12,8 +12,10 @@ import {
   Film,
   Globe2,
   ImageIcon,
+  Images,
   Map as MapIcon,
   UserRound,
+  X,
 } from "lucide-react";
 
 import { AltitudeGraph } from "@/components/assets/altitude-graph";
@@ -31,6 +33,11 @@ const VideoPlayer = dynamic(
     import("@/components/assets/video-player").then((m) => m.VideoPlayer),
   { ssr: false },
 );
+const PanoramaViewer = dynamic(
+  () =>
+    import("@/components/assets/panorama-viewer").then((m) => m.PanoramaViewer),
+  { ssr: false },
+);
 import { Button } from "@/components/ui/button";
 import {
   resolveViewerPreviewLutId,
@@ -45,6 +52,7 @@ import {
   formatFNumber,
   formatFrameRate,
 } from "@/lib/assets/media-metadata";
+import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import type {
   TelemetryGeoJson,
   TelemetrySeriesPoint,
@@ -96,6 +104,27 @@ function hlsUrl(username: string, assetId: string) {
 
 function downloadUrl(username: string, assetId: string) {
   return `/api/public/${encodeURIComponent(username)}/assets/${assetId}/download`;
+}
+
+function panoUrl(username: string, assetId: string) {
+  return `/api/public/${encodeURIComponent(username)}/assets/${assetId}/pano?v=${PANORAMA_WEB_CACHE_VERSION}`;
+}
+
+function frameUrl(
+  username: string,
+  assetId: string,
+  frameIndex: number,
+  thumb = false,
+) {
+  const base = `/api/public/${encodeURIComponent(username)}/assets/${assetId}/frames/${frameIndex}`;
+  return thumb ? `${base}?thumb=1` : base;
+}
+
+function typeLabel(asset: PublicPortfolioAssetDto) {
+  if (asset.panoramaBadge) return asset.panoramaBadge;
+  if (asset.sequenceKind === "panorama") return "panorama";
+  if (asset.sequenceKind === "hyperlapse") return "hyperlapse";
+  return asset.assetType;
 }
 
 function InfoRow({
@@ -166,6 +195,9 @@ export function PublicProfileView({ username }: { username: string }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"portfolio" | "map">("portfolio");
   const [preview, setPreview] = useState<PublicPortfolioAssetDto | null>(null);
+  const [selectedTileIndex, setSelectedTileIndex] = useState<number | null>(
+    null,
+  );
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [countryLabel, setCountryLabel] = useState<string | null>(null);
   const [previewTelemetry, setPreviewTelemetry] =
@@ -174,6 +206,9 @@ export function PublicProfileView({ username }: { username: string }) {
     [],
   );
   const [previewTime, setPreviewTime] = useState(0);
+  const [lookHeadingDegrees, setLookHeadingDegrees] = useState<number | null>(
+    null,
+  );
   const playbackPrefs = usePlaybackPreferences();
   const mapTheme = useMapTheme();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -258,10 +293,16 @@ export function PublicProfileView({ username }: { username: string }) {
       setPreviewTelemetry(null);
       setPreviewSeries([]);
       setPreviewTime(0);
+      setLookHeadingDegrees(null);
       return;
     }
     setPreviewTime(0);
-    if (preview.assetType === "photo") {
+    setLookHeadingDegrees(null);
+    setSelectedTileIndex(null);
+    if (
+      preview.assetType === "photo" ||
+      preview.sequenceKind === "panorama"
+    ) {
       setPreviewTelemetry(null);
       setPreviewSeries([]);
       return;
@@ -443,11 +484,18 @@ export function PublicProfileView({ username }: { username: string }) {
   }
 
   if (preview) {
+    const isPanorama = preview.sequenceKind === "panorama";
+    const viewerMode = preview.panoramaViewer;
+    const equirectReady =
+      (viewerMode === "180" || viewerMode === "360") &&
+      (preview.assetType === "photo" || preview.hasPanoPreview);
     const playbackReady =
       preview.assetType === "photo" ||
       preview.hasHls ||
       preview.hasProxy ||
-      preview.hasLrf;
+      preview.hasLrf ||
+      (isPanorama && preview.hasPanoPreview) ||
+      equirectReady;
     const meta = preview.mediaMetadata;
     const previewColorMode = colorModeFromMediaMetadata(meta);
     const previewLutId = resolveViewerPreviewLutId(
@@ -458,7 +506,10 @@ export function PublicProfileView({ username }: { username: string }) {
       meta?.kind === "photo"
         ? [
             meta.cameraModel,
-            formatDimensions(meta.width, meta.height),
+            formatDimensions(
+              meta.panoramaWidth ?? meta.width,
+              meta.panoramaHeight ?? meta.height,
+            ),
           ]
             .filter(Boolean)
             .join(" · ")
@@ -534,7 +585,7 @@ export function PublicProfileView({ username }: { username: string }) {
 
         <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_380px]">
           <section className="group relative min-h-[50vh] bg-black lg:min-h-0">
-            {preview.assetType === "photo" ? (
+            {viewerMode === "photo" && preview.assetType === "photo" ? (
               <PhotoViewer
                 src={originalUrl(username, preview.id)}
                 sourceSrc={`${originalUrl(username, preview.id)}?playback=source`}
@@ -542,7 +593,39 @@ export function PublicProfileView({ username }: { username: string }) {
                 lutId={previewLutId}
                 className="absolute inset-0 size-full"
               />
-            ) : playbackReady ? (
+            ) : viewerMode === "180" &&
+              (preview.assetType === "photo" || isPanorama) &&
+              playbackReady ? (
+              <PhotoViewer
+                key={`${preview.id}-180`}
+                src={panoUrl(username, preview.id)}
+                alt={preview.displayName}
+                className="absolute inset-0 size-full"
+              />
+            ) : viewerMode === "360" &&
+              (preview.assetType === "photo" || isPanorama) &&
+              playbackReady ? (
+              <PanoramaViewer
+                key={`${preview.id}-360`}
+                src={panoUrl(username, preview.id)}
+                poseHeadingDegrees={
+                  preview.mediaMetadata?.kind === "photo"
+                    ? preview.mediaMetadata.panoramaPoseHeadingDegrees
+                    : null
+                }
+                onLookHeadingChange={setLookHeadingDegrees}
+                className="absolute inset-0 size-full"
+              />
+            ) : viewerMode === "photo" && isPanorama && playbackReady ? (
+              <PhotoViewer
+                key={`${preview.id}-pano-flat`}
+                src={panoUrl(username, preview.id)}
+                alt={preview.displayName}
+                className="absolute inset-0 size-full"
+              />
+            ) : !isPanorama &&
+              preview.assetType !== "photo" &&
+              playbackReady ? (
               <VideoPlayer
                 key={preview.id}
                 src={originalUrl(username, preview.id)}
@@ -555,12 +638,24 @@ export function PublicProfileView({ username }: { username: string }) {
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
-                <Film className="size-8 text-white/70" />
+                {isPanorama ? (
+                  <Images className="size-8 text-white/70" />
+                ) : (
+                  <Film className="size-8 text-white/70" />
+                )}
                 <p className="text-sm font-medium text-white/90">
-                  Preparing playback…
+                  {isPanorama
+                    ? preview.sequenceFrames.length > 0
+                      ? "Panorama image missing"
+                      : "Preparing panorama…"
+                    : "Preparing playback…"}
                 </p>
                 <p className="max-w-sm text-xs text-white/60">
-                  Download is still available for the original file.
+                  {isPanorama
+                    ? preview.sequenceFrames.length > 0
+                      ? "This panorama has source tiles but no large pano image. Open tiles from the sidebar to view them individually."
+                      : "Download is still available for the original files."
+                    : "Download is still available for the original file."}
                 </p>
               </div>
             )}
@@ -612,11 +707,13 @@ export function PublicProfileView({ username }: { username: string }) {
                     <span className="inline-flex items-center gap-1.5 capitalize">
                       {preview.assetType === "video" ? (
                         <Film className="size-3.5" />
+                      ) : isPanorama || preview.panoramaBadge ? (
+                        <Images className="size-3.5" />
                       ) : (
                         <ImageIcon className="size-3.5" />
                       )}
-                      {preview.assetType}
-                      {preview.mainFileExt
+                      {typeLabel(preview)}
+                      {preview.mainFileExt && !preview.panoramaBadge
                         ? ` · ${preview.mainFileExt.toUpperCase()}`
                         : ""}
                     </span>
@@ -663,6 +760,15 @@ export function PublicProfileView({ username }: { username: string }) {
                     <InfoRow label="Dimensions">
                       {formatDimensions(meta.width, meta.height)}
                     </InfoRow>
+                    {meta.panoramaWidth != null &&
+                    meta.panoramaHeight != null ? (
+                      <InfoRow label="Panorama resolution">
+                        {formatDimensions(
+                          meta.panoramaWidth,
+                          meta.panoramaHeight,
+                        )}
+                      </InfoRow>
+                    ) : null}
                     <InfoRow label="Camera maker">
                       {meta.cameraMake ?? "—"}
                     </InfoRow>
@@ -715,6 +821,55 @@ export function PublicProfileView({ username }: { username: string }) {
                 )}
               </MetaSection>
 
+              {isPanorama || preview.panoramaBadge ? (
+                <MetaSection
+                  title="View tiles"
+                  summary={
+                    preview.sequenceFrames.length > 0
+                      ? `${preview.sequenceFrames.length} tiles`
+                      : "No tiles"
+                  }
+                >
+                  {preview.sequenceFrames.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No source tiles were uploaded with this panorama.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[...preview.sequenceFrames]
+                        .sort((a, b) => a.frameIndex - b.frameIndex)
+                        .map((frame) => (
+                          <button
+                            key={`${frame.frameIndex}-${frame.filename}`}
+                            type="button"
+                            title={frame.filename}
+                            className="group relative aspect-square overflow-hidden rounded-md bg-muted"
+                            onClick={() =>
+                              setSelectedTileIndex(frame.frameIndex)
+                            }
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={frameUrl(
+                                username,
+                                preview.id,
+                                frame.frameIndex,
+                                true,
+                              )}
+                              alt={frame.filename}
+                              className="size-full object-cover transition group-hover:brightness-90"
+                              loading="lazy"
+                            />
+                            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1 pb-0.5 pt-3 text-[10px] text-white">
+                              {frame.frameIndex + 1}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </MetaSection>
+              ) : null}
+
               {preview.description ? (
                 <section className="rounded-xl border border-border/80 px-3.5 py-3">
                   <p className="text-sm font-semibold tracking-tight">
@@ -741,12 +896,22 @@ export function PublicProfileView({ username }: { username: string }) {
                   <FlightPathPreview
                     flightPath={previewTelemetry?.flightPath ?? null}
                     currentPosition={mapPosition}
+                    headingDegrees={
+                      lookHeadingDegrees ??
+                      (preview.mediaMetadata?.kind === "photo"
+                        ? preview.mediaMetadata.panoramaPoseHeadingDegrees
+                        : null)
+                    }
                     markerKind={
-                      preview.assetType === "photo" ? "photo" : "drone"
+                      preview.assetType === "photo" || isPanorama
+                        ? "photo"
+                        : "drone"
                     }
                     className="aspect-square w-full overflow-hidden rounded-xl"
                   />
-                  {preview.assetType !== "photo" && previewSeries.length > 1 ? (
+                  {!isPanorama &&
+                  preview.assetType !== "photo" &&
+                  previewSeries.length > 1 ? (
                     <AltitudeGraph
                       series={previewSeries}
                       currentOffsetMs={Math.max(0, previewTime * 1000)}
@@ -767,6 +932,39 @@ export function PublicProfileView({ username }: { username: string }) {
             </div>
           </aside>
         </div>
+
+        {selectedTileIndex != null ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Panorama tile"
+            onClick={() => setSelectedTileIndex(null)}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute right-4 top-4 inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              onClick={() => setSelectedTileIndex(null)}
+            >
+              <X className="size-5" />
+            </button>
+            <div
+              className="relative h-[min(90vh,900px)] w-[min(96vw,1200px)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <PhotoViewer
+                src={frameUrl(username, preview.id, selectedTileIndex)}
+                alt={
+                  preview.sequenceFrames.find(
+                    (frame) => frame.frameIndex === selectedTileIndex,
+                  )?.filename ?? `Tile ${selectedTileIndex + 1}`
+                }
+                className="absolute inset-0 size-full"
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -959,10 +1157,14 @@ export function PublicProfileView({ username }: { username: string }) {
                       <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
                         {asset.assetType === "video" ? (
                           <Film className="size-3" />
+                        ) : asset.panoramaBadge ||
+                          asset.sequenceKind === "panorama" ? (
+                          <Images className="size-3" />
                         ) : (
                           <ImageIcon className="size-3" />
                         )}
-                        {asset.mainFileExt.toUpperCase()}
+                        {asset.panoramaBadge ??
+                          asset.mainFileExt.toUpperCase()}
                       </span>
                     </button>
                     <div className="space-y-2 p-2.5">

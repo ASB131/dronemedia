@@ -13,7 +13,12 @@ import {
   photoWebPreviewCacheKey,
   thumbnailCacheKey,
 } from "@/lib/assets/thumbnails";
-import { videoProxyCacheKey } from "@/lib/assets/transcoding";
+import {
+  panoramaEquirectCacheKey,
+  panoramaEquirectViewCacheKey,
+  panoramaEquirectWebCacheKey,
+  videoProxyCacheKey,
+} from "@/lib/assets/transcoding";
 import { reconcileUserStorageUsed } from "@/lib/users/storage-usage";
 
 export async function purgeAssetPermanently(
@@ -52,8 +57,24 @@ export async function purgeAssetPermanently(
   await storage.delete(photoWebPreviewCacheKey(userId, assetId), {
     tier: "cache",
   });
+  // Frame thumbs + mid-res zoom-to-tile previews live under these prefixes.
+  await storage.deletePrefix(`thumbnails/${userId}/${assetId}`, {
+    tier: "cache",
+  });
+  await storage.deletePrefix(`previews/${userId}/${assetId}`, {
+    tier: "cache",
+  });
   await storage.delete(videoProxyCacheKey(userId, assetId), { tier: "cache" });
   await storage.deletePrefix(videoHlsPrefix(userId, assetId), {
+    tier: "cache",
+  });
+  await storage.delete(panoramaEquirectCacheKey(userId, assetId), {
+    tier: "cache",
+  });
+  await storage.delete(panoramaEquirectViewCacheKey(userId, assetId), {
+    tier: "cache",
+  });
+  await storage.delete(panoramaEquirectWebCacheKey(userId, assetId), {
     tier: "cache",
   });
 

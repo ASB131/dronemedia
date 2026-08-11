@@ -236,6 +236,7 @@ def project_tile(
 def stitch(paths: list[str], output: str) -> int:
     metas: list[dict] = []
     sizes: list[tuple[int, int]] = []
+    ok_paths: list[str] = []
     for path in paths:
         try:
             meta = run_exiftool(path)
@@ -250,6 +251,7 @@ def stitch(paths: list[str], output: str) -> int:
                 del img
             metas.append(meta)
             sizes.append((w, h))
+            ok_paths.append(path)
         except Exception as exc:  # noqa: BLE001
             print(f"skip meta {path}: {exc}", file=sys.stderr)
 
@@ -381,6 +383,18 @@ def stitch(paths: list[str], output: str) -> int:
                 "pxPerDeg": round(px_per_deg, 2),
                 "viewWidth": int(view.shape[1]),
                 "viewHeight": int(view.shape[0]),
+                "tiles": [
+                    {
+                        "file": Path(ok_paths[i]).name,
+                        "yaw": float(m.get("GimbalYawDegree") or 0.0),
+                        "pitch": float(m.get("GimbalPitchDegree") or 0.0),
+                        "roll": float(m.get("GimbalRollDegree") or 0.0),
+                        "hfovDeg": round(horizontal_fov_deg(m), 3),
+                        "width": int(sizes[i][0]),
+                        "height": int(sizes[i][1]),
+                    }
+                    for i, m in enumerate(metas)
+                ],
             }
         ),
         encoding="utf-8",

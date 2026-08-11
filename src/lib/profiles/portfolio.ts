@@ -195,6 +195,7 @@ export async function getPublicPortfolioExtras(username: string): Promise<{
         id: assets.id,
         displayName: assets.displayName,
         assetType: assets.assetType,
+        sequenceKind: assets.sequenceKind,
         mainFileExt: assets.mainFileExt,
         description: assets.description,
         fileSizeBytes: assets.fileSizeBytes,
@@ -222,37 +223,76 @@ export async function getPublicPortfolioExtras(username: string): Promise<{
 
     const { getEffectiveCaptureDate } = await import("@/lib/assets/capture");
     const { fuzzMediaPoint } = await import("@/lib/shares/privacy");
+    const {
+      effectivePanoramaViewer,
+      panoramaViewerBadgeLabel,
+    } = await import("@/lib/assets/panorama-viewer-mode");
+    const { panoramaHasLargeImage } = await import(
+      "@/lib/assets/panorama-web-preview"
+    );
+    const { ensurePanoramaPoseHeading } = await import(
+      "@/lib/assets/panorama-pose-heading"
+    );
     const order = new Map(
       portfolio.showcaseAssetIds.map((id, index) => [id, index]),
     );
-    rows
-      .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
-      .forEach((row) => {
-        const hasCoords =
-          typeof row.lat === "number" &&
-          typeof row.lng === "number" &&
-          Number.isFinite(row.lat) &&
-          Number.isFinite(row.lng);
-        const fuzzed = hasCoords
-          ? fuzzMediaPoint([row.lng!, row.lat!])
-          : null;
-        showcase.push({
-          id: row.id,
-          displayName: row.displayName,
-          assetType: row.assetType,
-          mainFileExt: row.mainFileExt,
-          description: row.description,
-          fileSizeBytes: row.fileSizeBytes,
-          hasSrt: row.hasSrt,
-          mediaMetadata: row.mediaMetadata ?? null,
-          preferredLutId: row.preferredLutId ?? null,
-          location: fuzzed ? { lat: fuzzed[1], lng: fuzzed[0] } : null,
-          capturedAt: getEffectiveCaptureDate(row).toISOString(),
-          hasHls: row.hasHls,
-          hasProxy: row.hasProxy || row.hasLrf,
-          hasLrf: row.hasLrf,
-        });
+    const sorted = rows.sort(
+      (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
+    );
+    for (const row of sorted) {
+      const hasCoords =
+        typeof row.lat === "number" &&
+        typeof row.lng === "number" &&
+        Number.isFinite(row.lat) &&
+        Number.isFinite(row.lng);
+      const fuzzed = hasCoords
+        ? fuzzMediaPoint([row.lng!, row.lat!])
+        : null;
+      const sequenceKind = row.sequenceKind ?? null;
+      let mediaMetadata = row.mediaMetadata ?? null;
+      const viewerAsset = {
+        assetType: row.assetType,
+        sequenceKind,
+        mediaMetadata,
+      };
+      const isPano = sequenceKind === "panorama";
+      const equirectPhoto =
+        row.assetType === "photo" &&
+        effectivePanoramaViewer(viewerAsset) !== "photo";
+      if (isPano || row.assetType === "photo") {
+        mediaMetadata = await ensurePanoramaPoseHeading(
+          user.id,
+          row.id,
+          mediaMetadata,
+          { mainFileExt: row.mainFileExt },
+        );
+      }
+      const viewerWithMeta = { ...viewerAsset, mediaMetadata };
+      const hasPanoPreview = isPano
+        ? await panoramaHasLargeImage(user.id, row.id)
+        : equirectPhoto;
+      showcase.push({
+        id: row.id,
+        displayName: row.displayName,
+        assetType: row.assetType,
+        sequenceKind,
+        mainFileExt: row.mainFileExt,
+        description: row.description,
+        fileSizeBytes: row.fileSizeBytes,
+        hasSrt: row.hasSrt,
+        hasPanoPreview,
+        panoramaBadge: panoramaViewerBadgeLabel(viewerWithMeta),
+        panoramaViewer: effectivePanoramaViewer(viewerWithMeta),
+        sequenceFrames: [],
+        mediaMetadata,
+        preferredLutId: row.preferredLutId ?? null,
+        location: fuzzed ? { lat: fuzzed[1], lng: fuzzed[0] } : null,
+        capturedAt: getEffectiveCaptureDate(row).toISOString(),
+        hasHls: row.hasHls,
+        hasProxy: row.hasProxy || row.hasLrf,
+        hasLrf: row.hasLrf,
       });
+    }
   }
 
   return {

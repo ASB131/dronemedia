@@ -1,6 +1,5 @@
 import { Readable } from "node:stream";
 
-import { getAccessibleAsset } from "@/lib/assets/access";
 import {
   effectivePanoramaViewer,
   isEquirectViewerMode,
@@ -11,7 +10,7 @@ import {
   panoramaEquirectCacheKey,
   panoramaEquirectViewCacheKey,
 } from "@/lib/assets/transcoding";
-import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { getPublicAssetForUsername } from "@/lib/profiles/queries";
 import { buildMediaAssetKey, getStorageAdapter } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -19,13 +18,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ assetId: string }> },
+  context: { params: Promise<{ username: string; assetId: string }> },
 ) {
   try {
-    const session = await requireApprovedSession();
-    const { assetId } = await context.params;
-    const asset = await getAccessibleAsset(session.user.id, assetId);
-
+    const { username, assetId } = await context.params;
+    const asset = await getPublicAssetForUsername(username, assetId);
     if (!asset) {
       return new Response("Not found", { status: 404 });
     }
@@ -69,12 +66,12 @@ export async function GET(
             return new Response(webStream, {
               headers: {
                 "Content-Type": preview.contentType,
-                "Cache-Control": "private, max-age=3600",
+                "Cache-Control": "public, max-age=86400",
+                Vary: "Accept",
               },
             });
           }
         }
-        // Fall through to source if web preview cannot be built.
       }
 
       const stream = await storage.getStream(sourceKey, { tier: "media" });
@@ -87,7 +84,7 @@ export async function GET(
       return new Response(webStream, {
         headers: {
           "Content-Type": "image/jpeg",
-          "Cache-Control": "private, max-age=3600",
+          "Cache-Control": "public, max-age=3600",
         },
       });
     }
@@ -105,12 +102,11 @@ export async function GET(
           return new Response(webStream, {
             headers: {
               "Content-Type": "image/jpeg",
-              "Cache-Control": "private, max-age=3600",
+              "Cache-Control": "public, max-age=3600",
             },
           });
         }
       }
-      // Legacy full equirect / view cache as source fallback.
       for (const key of [
         panoramaEquirectCacheKey(ownerId, assetId),
         panoramaEquirectViewCacheKey(ownerId, assetId),
@@ -124,7 +120,7 @@ export async function GET(
             return new Response(webStream, {
               headers: {
                 "Content-Type": "image/jpeg",
-                "Cache-Control": "private, max-age=3600",
+                "Cache-Control": "public, max-age=3600",
               },
             });
           }
@@ -146,7 +142,8 @@ export async function GET(
         return new Response(webStream, {
           headers: {
             "Content-Type": preview.contentType,
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control": "public, max-age=86400",
+            Vary: "Accept",
           },
         });
       }
@@ -162,6 +159,7 @@ export async function GET(
       { status: hasDji ? 503 : 404 },
     );
   } catch (error) {
-    return jsonError(error);
+    console.error(error);
+    return new Response("Internal server error", { status: 500 });
   }
 }

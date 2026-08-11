@@ -1,43 +1,21 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import {
+  exiftoolAvailable,
+  readExifToolTags,
+  type ExifToolTags,
+} from "@/lib/assets/exiftool";
+import { poseHeadingDegreesFromTags } from "@/lib/assets/panorama-heading";
 
-const execFileAsync = promisify(execFile);
+export {
+  exiftoolAvailable,
+  readExifToolTags,
+  type ExifToolTags,
+};
 
-export type ExifToolTags = Record<string, unknown>;
-
-let available: boolean | null = null;
-
-export async function exiftoolAvailable(): Promise<boolean> {
-  if (available != null) return available;
-  try {
-    await execFileAsync("exiftool", ["-ver"], { timeout: 5_000 });
-    available = true;
-  } catch {
-    available = false;
-  }
-  return available;
-}
-
-/**
- * Read metadata with ExifTool. `-n` returns numeric GPS/exposure values.
- * Returns null when ExifTool is missing or the file cannot be read.
- */
-export async function readExifToolTags(
-  filePath: string,
-): Promise<ExifToolTags | null> {
-  if (!(await exiftoolAvailable())) return null;
-
-  try {
-    const { stdout } = await execFileAsync(
-      "exiftool",
-      ["-j", "-n", "-fast2", filePath],
-      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
-    );
-    const parsed = JSON.parse(stdout) as ExifToolTags[];
-    return parsed[0] ?? null;
-  } catch {
-    return null;
-  }
+/** Geographic heading of the equirect center when tags provide it. */
+export function poseHeadingDegreesFromExifTool(
+  tags: ExifToolTags | null,
+): number | null {
+  return poseHeadingDegreesFromTags(tags);
 }
 
 function asNumber(value: unknown): number | null {

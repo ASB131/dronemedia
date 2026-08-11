@@ -76,6 +76,7 @@ import {
   effectivePanoramaViewer,
   isEquirectViewerMode,
 } from "@/lib/assets/panorama-viewer-mode";
+import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import { getMediaReturnPath } from "@/lib/navigation/media-return";
 import type {
   TelemetryGeoJson,
@@ -257,7 +258,14 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     timeSeconds: number;
     token: number;
   } | null>(null);
+  const [lookHeadingDegrees, setLookHeadingDegrees] = useState<number | null>(
+    null,
+  );
   const playbackPrefs = usePlaybackPreferences();
+
+  useEffect(() => {
+    setLookHeadingDegrees(null);
+  }, [assetId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -434,6 +442,8 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
     if (isPanorama) {
       if (asset.hasPanoPreview) return;
       if (jobGates && !jobGates.panoramaStitch) return;
+      // Tiles without a large pano image will never get a sphere preview.
+      if ((asset.sequenceFrames?.length ?? 0) > 0) return;
     } else if (asset.hasHls || asset.hasProxy) {
       return;
     } else if (jobGates && !jobGates.webTranscoding) {
@@ -461,11 +471,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       ) {
         return;
       }
-      if (event.key === "ArrowLeft" && neighbors?.previous) {
-        router.replace(`/assets/${neighbors.previous.id}`);
-      }
-      if (event.key === "ArrowRight" && neighbors?.next) {
+      if (event.key === "ArrowLeft" && neighbors?.next) {
         router.replace(`/assets/${neighbors.next.id}`);
+      }
+      if (event.key === "ArrowRight" && neighbors?.previous) {
+        router.replace(`/assets/${neighbors.previous.id}`);
       }
       if (event.key === "Escape") {
         setAlbumMenuOpen(false);
@@ -656,8 +666,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const videoSourceUrl = allowVideoSourcePlayback
     ? `/api/assets/${asset.id}/original?playback=source`
     : null;
-  const panoUrl = `/api/assets/${asset.id}/pano`;
-  const panoFullUrl = `${panoUrl}?full=1`;
+  const panoUrl = `/api/assets/${asset.id}/pano?v=${PANORAMA_WEB_CACHE_VERSION}`;
   const hlsUrl = asset.hasHls
     ? `/api/assets/${asset.id}/hls/index.m3u8`
     : null;
@@ -861,7 +870,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             playbackReady ? (
             <PhotoViewer
               key={`${asset.id}-180`}
-              src={panoFullUrl}
+              src={panoUrl}
               alt={asset.displayName}
               className="absolute inset-0 size-full"
             />
@@ -871,12 +880,18 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <PanoramaViewer
               key={`${asset.id}-360`}
               src={panoUrl}
+              poseHeadingDegrees={
+                asset.mediaMetadata?.kind === "photo"
+                  ? asset.mediaMetadata.panoramaPoseHeadingDegrees
+                  : null
+              }
+              onLookHeadingChange={setLookHeadingDegrees}
               className="absolute inset-0 size-full"
             />
           ) : viewerMode === "photo" && isPanorama && playbackReady ? (
             <PhotoViewer
               key={`${asset.id}-pano-flat`}
-              src={panoFullUrl}
+              src={panoUrl}
               alt={asset.displayName}
               className="absolute inset-0 size-full"
             />
@@ -898,18 +913,22 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
               <p className="text-sm font-medium text-white/90">
                 {isPanorama
-                  ? jobGates && !jobGates.panoramaStitch
-                    ? "Panorama preview unavailable"
-                    : "Stitching panorama…"
+                  ? (asset.sequenceFrames?.length ?? 0) > 0
+                    ? "Panorama image missing"
+                    : jobGates && !jobGates.panoramaStitch
+                      ? "Panorama preview unavailable"
+                      : "Preparing panorama…"
                   : jobGates && !jobGates.webTranscoding
                     ? "Streaming preview unavailable"
                     : "Preparing playback…"}
               </p>
               <p className="max-w-sm text-xs text-white/60">
                 {isPanorama
-                  ? jobGates && !jobGates.panoramaStitch
-                    ? "An administrator has paused panorama stitching. A 360° preview will appear after stitching is enabled and this file is processed. Source playback in the player is disabled until then — you can still download the original."
-                    : "Tiles are being stitched into a 360° preview. This page will refresh automatically when ready."
+                  ? (asset.sequenceFrames?.length ?? 0) > 0
+                    ? "This panorama has source tiles but no large stitched pano image. Open tiles from the sidebar to view them individually."
+                    : jobGates && !jobGates.panoramaStitch
+                      ? "An administrator has paused panorama processing. A preview will appear after processing is enabled and a pano image is available."
+                      : "Waiting for the large panorama image preview. This page will refresh automatically when ready."
                   : jobGates && !jobGates.webTranscoding
                     ? "An administrator has paused transcoding (or a preview has not been generated yet). Source playback in the player is disabled until a streaming preview exists — you can still download the original file."
                     : "A streaming preview is being generated. This page will refresh automatically when ready. Source quality is available in the player after the preview exists."}
@@ -917,25 +936,25 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             </div>
           )}
 
-          {neighbors?.previous ? (
+          {neighbors?.next ? (
             <button
               type="button"
-              aria-label="Previous media"
-              title={neighbors.previous.displayName}
-              onClick={() =>
-                router.replace(`/assets/${neighbors.previous!.id}`)
-              }
+              aria-label="Later media"
+              title={neighbors.next.displayName}
+              onClick={() => router.replace(`/assets/${neighbors.next!.id}`)}
               className="absolute left-3 top-1/2 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white opacity-0 shadow-lg backdrop-blur transition group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
             >
               <ChevronLeft className="size-6" />
             </button>
           ) : null}
-          {neighbors?.next ? (
+          {neighbors?.previous ? (
             <button
               type="button"
-              aria-label="Next media"
-              title={neighbors.next.displayName}
-              onClick={() => router.replace(`/assets/${neighbors.next!.id}`)}
+              aria-label="Earlier media"
+              title={neighbors.previous.displayName}
+              onClick={() =>
+                router.replace(`/assets/${neighbors.previous!.id}`)
+              }
               className="absolute right-3 top-1/2 z-20 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white opacity-0 shadow-lg backdrop-blur transition group-hover:opacity-100 hover:bg-black/75 focus-visible:opacity-100"
             >
               <ChevronRight className="size-6" />
@@ -1260,26 +1279,9 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                 </p>
               )}
 
-              <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Edit details
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    className="text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void patch({ displayName })}
-                  >
-                    Rename
-                  </Button>
-                </div>
-                {asset.assetType === "video" ? (
-                  colorMode ? (
+              {asset.assetType === "video" ? (
+                <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+                  {colorMode ? (
                     <PreviewLutPicker
                       colorProfile={colorMode}
                       value={effectiveLutId}
@@ -1293,101 +1295,9 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                       LUT grading is available for D-Log / D-Log M videos once
                       color mode is detected from the SRT.
                     </p>
-                  )
-                ) : null}
-                <div className="flex gap-2">
-                  <Input
-                    type="datetime-local"
-                    value={capturedAt}
-                    onChange={(event) => setCapturedAt(event.target.value)}
-                    className="text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      void patch({
-                        capturedAtOverride: new Date(capturedAt).toISOString(),
-                      })
-                    }
-                  >
-                    Set time
-                  </Button>
+                  )}
                 </div>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder="Add a description…"
-                  className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    void patch({
-                      description: description.trim()
-                        ? description.trim()
-                        : null,
-                    })
-                  }
-                >
-                  Save description
-                </Button>
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          aria-label={`Remove tag ${tag}`}
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() =>
-                            setTags((prev) =>
-                              prev.filter((item) => item !== tag),
-                            )
-                          }
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      value={tagDraft}
-                      onChange={(event) => setTagDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addTag();
-                        }
-                      }}
-                      placeholder="Add tag…"
-                      className="text-sm"
-                      maxLength={64}
-                    />
-                    <Button size="sm" variant="outline" onClick={addTag}>
-                      Add
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void patch({ tags })}
-                    >
-                      Save tags
-                    </Button>
-                  </div>
-                </div>
-                {editMessage ? (
-                  <p className="text-xs text-muted-foreground">{editMessage}</p>
-                ) : null}
-              </div>
+              ) : null}
             </MetaSection>
 
             {showTilesSection ? (
@@ -1563,6 +1473,131 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                 ) : null}
               </div>
             </MetaSection>
+
+            <MetaSection
+              title="Edit"
+              summary={
+                [
+                  displayName.trim() || null,
+                  description.trim() ? "Description" : null,
+                  tags.length > 0
+                    ? `${tags.length} tag${tags.length === 1 ? "" : "s"}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Name, time, description, tags"
+              }
+            >
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    className="text-sm"
+                    placeholder="Display name"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void patch({ displayName })}
+                  >
+                    Rename
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    type="datetime-local"
+                    value={capturedAt}
+                    onChange={(event) => setCapturedAt(event.target.value)}
+                    className="text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void patch({
+                        capturedAtOverride: new Date(capturedAt).toISOString(),
+                      })
+                    }
+                  >
+                    Set time
+                  </Button>
+                </div>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder="Add a description…"
+                  className="w-full rounded-lg border border-border bg-background px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void patch({
+                      description: description.trim()
+                        ? description.trim()
+                        : null,
+                    })
+                  }
+                >
+                  Save description
+                </Button>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          aria-label={`Remove tag ${tag}`}
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            setTags((prev) =>
+                              prev.filter((item) => item !== tag),
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={tagDraft}
+                      onChange={(event) => setTagDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addTag();
+                        }
+                      }}
+                      placeholder="Add tag…"
+                      className="text-sm"
+                      maxLength={64}
+                    />
+                    <Button size="sm" variant="outline" onClick={addTag}>
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void patch({ tags })}
+                    >
+                      Save tags
+                    </Button>
+                  </div>
+                </div>
+                {editMessage ? (
+                  <p className="text-xs text-muted-foreground">{editMessage}</p>
+                ) : null}
+              </div>
+            </MetaSection>
           </div>
 
           <div className="shrink-0 border-t border-border bg-background p-3 sm:p-4">
@@ -1587,6 +1622,12 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                             lng: asset.location.lng,
                           }
                         : null
+                  }
+                  headingDegrees={
+                    lookHeadingDegrees ??
+                    (asset.mediaMetadata?.kind === "photo"
+                      ? asset.mediaMetadata.panoramaPoseHeadingDegrees
+                      : null)
                   }
                   markerKind={asset.assetType === "photo" ? "photo" : "drone"}
                   className="aspect-square w-full overflow-hidden rounded-xl"

@@ -1,9 +1,15 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { getEffectiveCaptureDate } from "@/lib/assets/capture";
 import type { MediaMetadata } from "@/lib/assets/media-metadata";
+import {
+  effectivePanoramaViewer,
+  panoramaViewerBadgeLabel,
+} from "@/lib/assets/panorama-viewer-mode";
+import { panoramaHasLargeImage } from "@/lib/assets/panorama-web-preview";
+import { ensurePanoramaPoseHeading } from "@/lib/assets/panorama-pose-heading";
 import { getWebDb } from "@/lib/db";
-import { assets, users } from "@/lib/db/schema";
+import { assets, sequenceFrames, users } from "@/lib/db/schema";
 import type { MapAssetDto } from "@/lib/map/queries";
 import { fuzzMediaPoint } from "@/lib/shares/privacy";
 
@@ -25,11 +31,16 @@ export type PublicPortfolioAssetDto = {
   id: string;
   displayName: string;
   assetType: "photo" | "video" | "sequence";
+  sequenceKind: "hyperlapse" | "panorama" | null;
   capturedAt: string;
   mainFileExt: string;
   description: string | null;
   fileSizeBytes: number | null;
   hasSrt: boolean;
+  hasPanoPreview: boolean;
+  panoramaBadge: string | null;
+  panoramaViewer: "photo" | "180" | "360";
+  sequenceFrames: Array<{ frameIndex: number; filename: string }>;
   mediaMetadata: MediaMetadata | null;
   preferredLutId: string | null;
   location: { lat: number; lng: number } | null;
@@ -117,6 +128,7 @@ export async function listPublicPortfolioAssets(
       id: assets.id,
       displayName: assets.displayName,
       assetType: assets.assetType,
+      sequenceKind: assets.sequenceKind,
       mainFileExt: assets.mainFileExt,
       description: assets.description,
       fileSizeBytes: assets.fileSizeBytes,
@@ -147,32 +159,100 @@ export async function listPublicPortfolioAssets(
     )
     .limit(limit);
 
-  return rows.map((row) => {
-    const hasCoords =
-      typeof row.lat === "number" &&
-      typeof row.lng === "number" &&
-      Number.isFinite(row.lat) &&
-      Number.isFinite(row.lng);
-    const fuzzed = hasCoords
-      ? fuzzMediaPoint([row.lng!, row.lat!])
-      : null;
-    return {
-      id: row.id,
-      displayName: row.displayName,
-      assetType: row.assetType,
-      mainFileExt: row.mainFileExt,
-      description: row.description,
-      fileSizeBytes: row.fileSizeBytes,
-      hasSrt: row.hasSrt,
-      mediaMetadata: row.mediaMetadata ?? null,
-      preferredLutId: row.preferredLutId ?? null,
-      location: fuzzed
-        ? { lat: fuzzed[1], lng: fuzzed[0] }
-        : null,
-      capturedAt: getEffectiveCaptureDate(row).toISOString(),
-      ...playbackFromRow(row),
-    };
-  });
+  const panoIds = rows
+    .filter((row) => row.sequenceKind === "panorama")
+    .map((row) => row.id);
+
+  const previewById = new Map<string, boolean>();
+  await Promise.all(
+    panoIds.map(async (id) => {
+      previewById.set(id, await panoramaHasLargeImage(user.id, id));
+    }),
+  );
+
+  const framesByAsset = new Map<
+    string,
+    Array<{ frameIndex: number; filename: string }>
+  >();
+  if (panoIds.length > 0) {
+    const frameRows = await db
+      .select({
+        assetId: sequenceFrames.assetId,
+        frameIndex: sequenceFrames.frameIndex,
+        filename: sequenceFrames.filename,
+      })
+      .from(sequenceFrames)
+      .where(inArray(sequenceFrames.assetId, panoIds))
+      .orderBy(asc(sequenceFrames.frameIndex));
+    for (const frame of frameRows) {
+      const list = framesByAsset.get(frame.assetId) ?? [];
+      list.push({
+        frameIndex: frame.frameIndex,
+        filename: frame.filename,
+      });
+      framesByAsset.set(frame.assetId, list);
+    }
+  }
+
+  return Promise.all(
+    rows.map(async (row) => {
+      const hasCoords =
+        typeof row.lat === "number" &&
+        typeof row.lng === "number" &&
+        Number.isFinite(row.lat) &&
+        Number.isFinite(row.lng);
+      const fuzzed = hasCoords
+        ? fuzzMediaPoint([row.lng!, row.lat!])
+        : null;
+      const sequenceKind = row.sequenceKind ?? null;
+      let mediaMetadata = row.mediaMetadata ?? null;
+      const viewerAsset = {
+        assetType: row.assetType,
+        sequenceKind,
+        mediaMetadata,
+      };
+      const isPano = sequenceKind === "panorama";
+      const equirectPhoto =
+        row.assetType === "photo" &&
+        effectivePanoramaViewer(viewerAsset) !== "photo";
+      if (isPano || row.assetType === "photo") {
+        mediaMetadata = await ensurePanoramaPoseHeading(
+          user.id,
+          row.id,
+          mediaMetadata,
+          { mainFileExt: row.mainFileExt },
+        );
+      }
+      const viewerWithMeta = {
+        ...viewerAsset,
+        mediaMetadata,
+      };
+      const hasPanoPreview = isPano
+        ? (previewById.get(row.id) ?? false)
+        : equirectPhoto;
+      return {
+        id: row.id,
+        displayName: row.displayName,
+        assetType: row.assetType,
+        sequenceKind,
+        mainFileExt: row.mainFileExt,
+        description: row.description,
+        fileSizeBytes: row.fileSizeBytes,
+        hasSrt: row.hasSrt,
+        hasPanoPreview,
+        panoramaBadge: panoramaViewerBadgeLabel(viewerWithMeta),
+        panoramaViewer: effectivePanoramaViewer(viewerWithMeta),
+        sequenceFrames: framesByAsset.get(row.id) ?? [],
+        mediaMetadata,
+        preferredLutId: row.preferredLutId ?? null,
+        location: fuzzed
+          ? { lat: fuzzed[1], lng: fuzzed[0] }
+          : null,
+        capturedAt: getEffectiveCaptureDate(row).toISOString(),
+        ...playbackFromRow(row),
+      };
+    }),
+  );
 }
 
 export async function listPublicMapAssetsForUsername(

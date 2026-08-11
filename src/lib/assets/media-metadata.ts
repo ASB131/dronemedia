@@ -26,6 +26,11 @@ export type PhotoMediaMetadata = {
    * User toggles set this; auto-detect only fills when still null.
    */
   panoramaViewer: PanoramaViewerMode | null;
+  /**
+   * Geographic heading (degrees, 0–360) of the equirect image center when
+   * known from GPano/DJI tags. Null when unavailable — never invent.
+   */
+  panoramaPoseHeadingDegrees: number | null;
 };
 
 export type VideoMediaMetadata = {
@@ -164,6 +169,7 @@ export function photoMetadataFromExif(
     panoramaHeight: null,
     panoramaSphere: null,
     panoramaViewer: null,
+    panoramaPoseHeadingDegrees: null,
   };
 }
 
@@ -193,6 +199,10 @@ export function mergePhotoMetadata(
     panoramaHeight: primary.panoramaHeight ?? fallback.panoramaHeight ?? null,
     panoramaSphere: primary.panoramaSphere ?? fallback.panoramaSphere ?? null,
     panoramaViewer: primary.panoramaViewer ?? fallback.panoramaViewer ?? null,
+    panoramaPoseHeadingDegrees:
+      primary.panoramaPoseHeadingDegrees ??
+      fallback.panoramaPoseHeadingDegrees ??
+      null,
   };
 }
 

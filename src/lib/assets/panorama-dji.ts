@@ -6,6 +6,7 @@ import {
   panoramaDjiStitchedMediaKey,
   panoramaEquirectCacheKey,
   panoramaEquirectViewCacheKey,
+  panoramaEquirectWebCacheKey,
 } from "@/lib/assets/transcoding";
 import { loadConfig } from "@/lib/config";
 import { getWebDb, getWorkerDb } from "@/lib/db";
@@ -117,6 +118,9 @@ export async function clearPanoramaEquirectCache(
     .catch(() => undefined);
   await storage
     .delete(panoramaEquirectViewCacheKey(userId, assetId), { tier: "cache" })
+    .catch(() => undefined);
+  await storage
+    .delete(panoramaEquirectWebCacheKey(userId, assetId), { tier: "cache" })
     .catch(() => undefined);
 }
 

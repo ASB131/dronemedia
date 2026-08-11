@@ -42,6 +42,7 @@ import {
   gpsFromExifTool,
   isEquirectStitchTags,
   photoFieldsFromExifTool,
+  poseHeadingDegreesFromExifTool,
   readExifToolTags,
   type ExifToolTags,
 } from "../lib/exiftool";
@@ -69,6 +70,7 @@ function emptyPhotoMeta(): PhotoMediaMetadata {
     panoramaHeight: null,
     panoramaSphere: null,
     panoramaViewer: null,
+    panoramaPoseHeadingDegrees: null,
   };
 }
 
@@ -86,6 +88,10 @@ function applyExifToolPhoto(
   const toolPhoto = photoFieldsFromExifTool(tags);
   let merged = mergePhotoMetadata(photoBase, toolPhoto);
   merged.panoramaViewer = priorViewer;
+  const heading = poseHeadingDegreesFromExifTool(tags);
+  if (heading != null) {
+    merged.panoramaPoseHeadingDegrees = heading;
+  }
   if (isEquirectStitchTags(tags)) {
     const ratio =
       toolPhoto.width != null && toolPhoto.height != null && toolPhoto.height > 0
@@ -505,6 +511,11 @@ export function createMetadataWorker(connection: { url: string }) {
             prior?.panoramaViewer ??
             djiStitchMeta.panoramaViewer ??
             mediaMetadata.panoramaViewer;
+          mediaMetadata.panoramaPoseHeadingDegrees =
+            djiStitchMeta.panoramaPoseHeadingDegrees ??
+            fromTiles?.panoramaPoseHeadingDegrees ??
+            prior?.panoramaPoseHeadingDegrees ??
+            mediaMetadata.panoramaPoseHeadingDegrees;
         } else {
           capturedAt = earliest;
           mediaMetadata = representativeMeta;

@@ -12,6 +12,15 @@ export type PanoramaStitchMeta = {
   height: number;
   sphere: boolean;
   tileCount: number;
+  tiles?: Array<{
+    file?: string;
+    yaw?: number;
+    pitch?: number;
+    roll?: number;
+    hfovDeg?: number;
+    width?: number;
+    height?: number;
+  }>;
 };
 
 function scriptPath() {
@@ -38,6 +47,7 @@ async function readSidecarMeta(
         sphere: parsed.sphere,
         tileCount:
           typeof parsed.tileCount === "number" ? parsed.tileCount : 0,
+        tiles: Array.isArray(parsed.tiles) ? parsed.tiles : undefined,
       };
     }
   } catch {

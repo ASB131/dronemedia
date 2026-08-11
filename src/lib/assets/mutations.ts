@@ -60,6 +60,7 @@ function emptyPhotoMeta(): PhotoMediaMetadata {
     panoramaHeight: null,
     panoramaSphere: null,
     panoramaViewer: null,
+    panoramaPoseHeadingDegrees: null,
   };
 }
 

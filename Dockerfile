@@ -9,6 +9,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS builder
+ARG APP_VERSION=1.0.0
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
@@ -19,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
     gosu \
+    libimage-exiftool-perl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs

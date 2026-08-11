@@ -13,15 +13,14 @@ import {
   sequenceFrames,
 } from "@/lib/db/schema";
 import { getStorageAdapter } from "@/lib/storage";
-import {
-  panoramaEquirectCacheKey,
-  sequenceFullResExportKey,
-} from "./transcoding";
+import { sequenceFullResExportKey } from "./transcoding";
 import type { MediaMetadata } from "./media-metadata";
 import {
   effectivePanoramaViewer,
   isEquirectViewerMode,
 } from "./panorama-viewer-mode";
+import { panoramaHasLargeImage } from "./panorama-web-preview";
+import { ensurePanoramaPoseHeading } from "./panorama-pose-heading";
 import {
   getCaptureLocalParts,
   getCaptureTimezone,
@@ -203,9 +202,9 @@ export async function getAssetDetailForUser(
   if (asset.assetType === "video" || asset.assetType === "sequence") {
     const storage = getStorageAdapter();
     if (asset.sequenceKind === "panorama") {
-      hasPanoPreview = await storage.exists(
-        panoramaEquirectCacheKey(asset.ownerUserId, assetId),
-        { tier: "cache" },
+      hasPanoPreview = await panoramaHasLargeImage(
+        asset.ownerUserId,
+        assetId,
       );
     } else {
       // Prefer live cache presence over stale DB flags (flags can lag after migrate).
@@ -246,6 +245,19 @@ export async function getAssetDetailForUser(
     hasPanoPreview = true;
   }
 
+  let mediaMetadata = asset.mediaMetadata ?? null;
+  // Backfill heading for panos and any still that may carry DJI/EXIF yaw.
+  const isHeadingCandidate =
+    asset.sequenceKind === "panorama" || asset.assetType === "photo";
+  if (isHeadingCandidate) {
+    mediaMetadata = await ensurePanoramaPoseHeading(
+      asset.ownerUserId,
+      assetId,
+      mediaMetadata,
+      { mainFileExt: asset.mainFileExt },
+    );
+  }
+
   return {
     id: asset.id,
     displayName: asset.displayName,
@@ -266,7 +278,7 @@ export async function getAssetDetailForUser(
       fileSizeBytes: file.fileSizeBytes,
     })),
     location: hasCoords ? { lat: asset.lat!, lng: asset.lng! } : null,
-    mediaMetadata: asset.mediaMetadata ?? null,
+    mediaMetadata,
     hasHls,
     hasProxy,
     hasFullResExport,
