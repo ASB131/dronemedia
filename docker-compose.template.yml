@@ -1,12 +1,15 @@
-# Drone Media — template for GitHub / other hosts.
-# Copy to docker-compose.yml (or edit paths in place).
-# In-container paths stay /data/app, /data/cache, /data/media.
+# Drone Media — template kept in sync with docker-compose.yml (GHCR image pulls).
+# Prefer copying docker-compose.yml from the repo for new installs.
 #
-# App publishes host 3384 -> container 2283 (avoid Immich on host 2283).
-# Postgres and Redis are not published to the host.
+# Images:
+#   ghcr.io/asb131/dronemedia-app:${APP_VERSION:-latest}
+#   ghcr.io/asb131/dronemedia-worker:${APP_VERSION:-latest}
 #
-# Redis must be a host bind owned by uid 999 (redis user), e.g.:
-#   mkdir -p /path/to/redis && chown -R 999:999 /path/to/redis
+#   cp .env.example .env
+#   # edit paths / AUTH_SECRET / PUBLIC_URL
+#   docker compose pull && docker compose up -d
+
+name: dronemedia
 
 services:
   postgres:
@@ -14,12 +17,11 @@ services:
     container_name: dronemedia-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: drone_media
-      POSTGRES_PASSWORD: drone_media
-      POSTGRES_DB: drone_media
+      POSTGRES_USER: ${POSTGRES_USER:-drone_media}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drone_media}
+      POSTGRES_DB: ${POSTGRES_DB:-drone_media}
     volumes:
-      # EDIT: Postgres data — prefer a fast SSD; never nest under cache/
-      - "/path/to/database/postgres:/var/lib/postgresql/data"
+      - "${UPLOAD_LOCATION_POSTGRES:-./data/postgres}:/var/lib/postgresql/data"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U drone_media -d drone_media"]
       interval: 10s
@@ -33,8 +35,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      # EDIT: Redis on SSD — chown -R 999:999 this directory on the host
-      - "/path/to/redis:/data"
+      - "${UPLOAD_LOCATION_REDIS:-./data/redis}:/data"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,16 +43,14 @@ services:
       retries: 5
 
   db-migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/asb131/dronemedia-worker:${APP_VERSION:-latest}
     container_name: dronemedia-db-migrate
     restart: "no"
     environment:
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: drone_media
+      POSTGRES_USER: ${POSTGRES_USER:-drone_media}
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
       MEDIA_PATH: /data/media
@@ -62,19 +61,13 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      # EDIT: cache on SSD (thumbnails, HLS, proxies, upload staging)
-      - "/path/to/cache:/data/cache"
-      # EDIT: originals on HDD (bulk media)
-      - "/path/to/media:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
     command: ["sh", "./docker/migrate.sh"]
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-1.0.0}
+    image: ghcr.io/asb131/dronemedia-app:${APP_VERSION:-latest}
     container_name: dronemedia-app
     restart: unless-stopped
     mem_limit: ${APP_MEM_LIMIT:-3g}
@@ -84,21 +77,21 @@ services:
       HOSTNAME: "0.0.0.0"
       PORT: 2283
       PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:3384}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       AUTH_TRUST_HOST: "true"
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       REDIS_URL: redis://redis:6379
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
       MEDIA_PATH: /data/media
       CONFIG_PATH: /app/config.yml
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_VERSION: ${APP_VERSION:-1.0.0}
-      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-1.0.0}
+      APP_VERSION: ${APP_VERSION:-latest}
+      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-latest}
       RUN_MIGRATIONS: "false"
       NODE_OPTIONS: ${APP_NODE_OPTIONS:---max-old-space-size=2048}
     ports:
-      - "3384:2283"
+      - "${HOST_PORT:-3384}:2283"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,11 +101,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      # EDIT: cache on SSD
-      - "/path/to/cache:/data/cache"
-      # EDIT: media on HDD
-      - "/path/to/media:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:2283/api/health || exit 1"]
       interval: 30s
@@ -121,15 +112,13 @@ services:
       start_period: 60s
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/asb131/dronemedia-worker:${APP_VERSION:-latest}
     container_name: dronemedia-worker
     restart: unless-stopped
     mem_limit: ${WORKER_MEM_LIMIT:-6g}
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       REDIS_URL: redis://redis:6379
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
@@ -147,9 +136,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      - "/path/to/cache:/data/cache"
-      - "/path/to/media:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
 
 volumes:
   app_data:

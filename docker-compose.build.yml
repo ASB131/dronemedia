@@ -1,0 +1,30 @@
+# Developer override: build app/worker from local source instead of pulling GHCR.
+#
+# Usage (this PC / contributors):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Production servers should use docker-compose.yml alone (image pulls).
+
+services:
+  db-migrate:
+    image: dronemedia-worker:local
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    pull_policy: build
+
+  app:
+    image: dronemedia-app:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+    pull_policy: build
+
+  worker:
+    image: dronemedia-worker:local
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    pull_policy: build

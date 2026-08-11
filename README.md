@@ -111,28 +111,32 @@ There is **no** legacy share-link / “Shared inbox” flow. Visibility for othe
 
 ## Quick start (Docker)
 
-1. Clone the repo and create an env file:
+Install from **prebuilt images** (same idea as Immich): copy compose + env, pull, start. No source build required on the server.
+
+Images (published when `main` updates):
+
+- `ghcr.io/asb131/dronemedia-app`
+- `ghcr.io/asb131/dronemedia-worker`
+
+1. Copy install files into an empty folder (from this repo or a release):
 
    ```bash
+   # at minimum:
+   #   docker-compose.yml
+   #   .env.example  →  .env
+   #   config.yml
    cp .env.example .env
    ```
 
 2. Edit **`.env`**:
    - `AUTH_SECRET` — long random string (required)
    - `PUBLIC_URL` — URL you open in the browser (e.g. `http://192.168.1.177:3384` or `https://dronemedia.example.com`)
+   - `UPLOAD_LOCATION_*` — host paths for postgres, redis, cache, and media (or edit binds in compose)
 
-3. Edit **`docker-compose.yml`** host paths (and ports if needed):
-   - Postgres data → SSD (never under the cache directory)
-   - **Redis data → SSD** (host bind; **not** a Docker named volume)
-   - Cache → SSD (thumbnails, HLS, proxies, upload staging)
-   - Media → HDD (originals)
-   - App is published as **`3384:2283`** so it does **not** clash with Immich on **2283**
-   - Postgres and Redis are **not** published to the host (compose network only)
-
-4. Create the host directories, then start:
+3. Create the host directories, then pull and start:
 
    ```bash
-   # Example Linux layout — match paths in docker-compose.yml
+   # Example Linux layout — match UPLOAD_LOCATION_* in .env
    sudo mkdir -p /mnt/ssd1_system/docker/dronemedia/postgres \
      /mnt/ssd1_system/docker/dronemedia/redis \
      /mnt/ssd2_cache/dronemedia/cache \
@@ -140,12 +144,17 @@ There is **no** legacy share-link / “Shared inbox” flow. Visibility for othe
    # Redis official image runs as uid 999 — required or RDB saves fail (MISCONF / login broken)
    sudo chown -R 999:999 /mnt/ssd1_system/docker/dronemedia/redis
 
-   docker compose up -d --build
+   docker compose pull
+   docker compose up -d
    ```
 
-5. Open `PUBLIC_URL`. On first boot, the setup wizard creates the admin account.
+4. Open `PUBLIC_URL`. On first boot, the setup wizard creates the admin account.
+
+**Upgrades:** `docker compose pull && docker compose up -d` (optionally set `APP_VERSION` in `.env` to pin a tag).
 
 **Always run both `app` and `worker`.** Without the worker: no thumbnails, HLS, photo web previews, or telemetry jobs.
+
+If `docker compose pull` fails with unauthorized on GHCR, make the `dronemedia-app` and `dronemedia-worker` packages **public** under the GitHub repo’s Packages settings (first publish may create them as private).
 
 ### Useful commands
 
@@ -153,6 +162,7 @@ There is **no** legacy share-link / “Shared inbox” flow. Visibility for othe
 docker compose ps
 docker compose logs -f app worker
 docker compose restart worker
+docker compose pull && docker compose up -d   # upgrade
 docker compose down   # data on bind mounts / volumes is kept
 ```
 
@@ -183,6 +193,24 @@ Backups: database (`pg_dump` / admin backup) + **media** originals. Cache can be
 Chunked uploads assemble on cache and are moved to media on commit.
 
 ## Local development
+
+### Docker from source (this machine)
+
+`docker-compose.yml` pulls GHCR images. To **build locally** while developing, use a gitignored override (see `docker-compose.override.example.yml`) or:
+
+```bash
+cp docker-compose.override.example.yml docker-compose.override.yml
+# edit host paths in the override
+docker compose up -d --build
+```
+
+You can also pass the committed build overlay explicitly:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+### Node without full stack rebuild
 
 ```bash
 cp .env.example .env

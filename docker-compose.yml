@@ -1,13 +1,25 @@
-# Drone Media — edit host paths below for your machine.
-# In-container paths stay /data/app, /data/cache, /data/media (do not change those env values).
+# Drone Media — production / new-server install (pulls prebuilt images).
 #
-# Host port 3384 → container 2283 (Immich uses host 2283). Postgres/Redis not published.
+# Quick start:
+#   1. Copy .env.example → .env and set AUTH_SECRET + PUBLIC_URL
+#   2. Edit the host paths below (postgres, redis, cache, media)
+#   3. mkdir host dirs; chown redis dir to 999:999 on Linux
+#   4. docker compose pull && docker compose up -d
 #
-# Linux multi-drive example:
-#   Postgres (SSD):  /mnt/ssd1_system/docker/dronemedia/postgres
-#   Redis (SSD):     /mnt/ssd1_system/docker/dronemedia/redis  (chown 999:999)
-#   Cache (SSD):     /mnt/ssd2_cache/dronemedia/cache
-#   Media (HDD):     /mnt/hdd1_personal/dronemedia/media
+# Upgrade later:
+#   docker compose pull && docker compose up -d
+#
+# Images are published from the main branch to GHCR:
+#   ghcr.io/asb131/dronemedia-app
+#   ghcr.io/asb131/dronemedia-worker
+#
+# Local source builds (developers): use docker-compose.build.yml
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# App host port 3384 → container 2283 (avoids Immich on 2283).
+# Postgres and Redis are not published to the host.
+
+name: dronemedia
 
 services:
   postgres:
@@ -15,12 +27,12 @@ services:
     container_name: dronemedia-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: drone_media
-      POSTGRES_PASSWORD: drone_media
-      POSTGRES_DB: drone_media
+      POSTGRES_USER: ${POSTGRES_USER:-drone_media}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drone_media}
+      POSTGRES_DB: ${POSTGRES_DB:-drone_media}
     volumes:
-      # EDIT: Postgres on SSD — never nest under cache/
-      - "F:/drone media database/postgres:/var/lib/postgresql/data"
+      # EDIT: Postgres data — prefer a fast SSD; never nest under cache/
+      - "${UPLOAD_LOCATION_POSTGRES:-./data/postgres}:/var/lib/postgresql/data"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U drone_media -d drone_media"]
       interval: 10s
@@ -34,10 +46,8 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      # EDIT: Redis on SSD. Official image runs as uid 999 — create dir then:
-      #   mkdir -p …/redis && chown -R 999:999 …/redis
-      # Avoid Docker named volumes here; permission errors cause MISCONF / login failures.
-      - "F:/drone media database/redis:/data"
+      # EDIT: Redis on SSD — on Linux: mkdir -p …/redis && chown -R 999:999 …/redis
+      - "${UPLOAD_LOCATION_REDIS:-./data/redis}:/data"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -45,16 +55,14 @@ services:
       retries: 5
 
   db-migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/asb131/dronemedia-worker:${APP_VERSION:-latest}
     container_name: dronemedia-db-migrate
     restart: "no"
     environment:
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: drone_media
+      POSTGRES_USER: ${POSTGRES_USER:-drone_media}
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
       MEDIA_PATH: /data/media
@@ -65,18 +73,13 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      # EDIT: same cache/media paths as app/worker
-      - "F:/drone media database/cache:/data/cache"
-      - "F:/drone media storage:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
     command: ["sh", "./docker/migrate.sh"]
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-1.0.0}
+    image: ghcr.io/asb131/dronemedia-app:${APP_VERSION:-latest}
     container_name: dronemedia-app
     restart: unless-stopped
     mem_limit: ${APP_MEM_LIMIT:-3g}
@@ -85,23 +88,22 @@ services:
       HOST: 0.0.0.0
       HOSTNAME: "0.0.0.0"
       PORT: 2283
-      PUBLIC_URL: ${PUBLIC_URL:-http://192.168.1.177:3384}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      PUBLIC_URL: ${PUBLIC_URL:-http://127.0.0.1:3384}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       AUTH_TRUST_HOST: "true"
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       REDIS_URL: redis://redis:6379
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
       MEDIA_PATH: /data/media
       CONFIG_PATH: /app/config.yml
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_VERSION: ${APP_VERSION:-1.0.0}
-      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-1.0.0}
+      APP_VERSION: ${APP_VERSION:-latest}
+      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-latest}
       RUN_MIGRATIONS: "false"
       NODE_OPTIONS: ${APP_NODE_OPTIONS:---max-old-space-size=2048}
     ports:
-      # Host 3384 → container 2283 (Immich typically uses host 2283)
-      - "3384:2283"
+      - "${HOST_PORT:-3384}:2283"
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,10 +113,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      # EDIT: cache (SSD) and media (HDD)
-      - "F:/drone media database/cache:/data/cache"
-      - "F:/drone media storage:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:2283/api/health || exit 1"]
       interval: 30s
@@ -123,15 +124,13 @@ services:
       start_period: 60s
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    image: ghcr.io/asb131/dronemedia-worker:${APP_VERSION:-latest}
     container_name: dronemedia-worker
     restart: unless-stopped
     mem_limit: ${WORKER_MEM_LIMIT:-6g}
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://drone_media:drone_media@postgres:5432/drone_media
+      DATABASE_URL: postgresql://${POSTGRES_USER:-drone_media}:${POSTGRES_PASSWORD:-drone_media}@postgres:5432/${POSTGRES_DB:-drone_media}
       REDIS_URL: redis://redis:6379
       APP_DATA_PATH: /data/app
       CACHE_PATH: /data/cache
@@ -149,9 +148,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - app_data:/data/app
-      - ./config.yml:/app/config.yml:ro
-      - "F:/drone media database/cache:/data/cache"
-      - "F:/drone media storage:/data/media"
+      - ${CONFIG_FILE:-./config.yml}:/app/config.yml:ro
+      - "${UPLOAD_LOCATION_CACHE:-./data/cache}:/data/cache"
+      - "${UPLOAD_LOCATION_MEDIA:-./data/media}:/data/media"
 
 volumes:
   app_data:

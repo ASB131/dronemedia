@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Machine-specific compose paths / local source builds
+docker-compose.override.yml
+
 # local storage tiers (development)
 /data/
 
