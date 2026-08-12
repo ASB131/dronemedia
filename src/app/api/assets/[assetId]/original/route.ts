@@ -6,6 +6,7 @@ import { ensurePhotoWebPreview } from "@/lib/assets/photo-web-preview";
 import { videoProxyCacheKey } from "@/lib/assets/transcoding";
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
 import { buildMediaAssetKey, getStorageAdapter } from "@/lib/storage";
+import { allowInAppSourceForUserId } from "@/lib/playback/source-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,14 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const playbackSource = searchParams.get("playback") === "source";
     const downloadOriginal = searchParams.get("download") === "original";
+
+    if (playbackSource && !downloadOriginal) {
+      const allowed = await allowInAppSourceForUserId(session.user.id);
+      if (!allowed) {
+        return new Response("Source playback disabled", { status: 403 });
+      }
+    }
+
     const preferProxy =
       !playbackSource &&
       !downloadOriginal &&

@@ -137,6 +137,11 @@ const patchSchema = z.object({
       enabled: z.boolean().optional(),
     })
     .optional(),
+  playback: z
+    .object({
+      allowInAppSource: z.boolean().optional(),
+    })
+    .optional(),
   auth: z
     .object({
       login: z

@@ -150,6 +150,12 @@ export const configSchema = z.object({
         panoramaStitch: true,
       }),
   }),
+  playback: z
+    .object({
+      /** Allow Web/Source switch to stream camera originals in-app. Downloads stay allowed. */
+      allowInAppSource: z.boolean().default(true),
+    })
+    .default({ allowInAppSource: true }),
   theme: z.object({
     default: z.enum(["light", "dark", "system"]).default("system"),
     accent: z

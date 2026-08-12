@@ -136,6 +136,7 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
   const [reassignTarget, setReassignTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [allowInAppSource, setAllowInAppSource] = useState(true);
   const playbackPrefs = usePlaybackPreferences();
 
   async function reload() {
@@ -186,8 +187,12 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
       if (!mounted) return;
 
       if (detailRes.ok) {
-        const payload = (await detailRes.json()) as { asset: AssetDetailDto };
+        const payload = (await detailRes.json()) as {
+          asset: AssetDetailDto;
+          allowInAppSource?: boolean;
+        };
         setSelectedDetail(payload.asset);
+        setAllowInAppSource(payload.allowInAppSource !== false);
       }
 
       if (telemetryRes.ok) {
@@ -340,9 +345,10 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
   const mediaUrl = selectedDetail
     ? `/api/assets/${selectedDetail.id}/original`
     : null;
-  const sourceUrl = selectedDetail
-    ? `/api/assets/${selectedDetail.id}/original?playback=source`
-    : null;
+  const sourceUrl =
+    allowInAppSource && selectedDetail
+      ? `/api/assets/${selectedDetail.id}/original?playback=source`
+      : null;
   const hlsUrl =
     selectedDetail?.hasHls && selectedDetail
       ? `/api/assets/${selectedDetail.id}/hls/index.m3u8`
@@ -455,7 +461,13 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
               src={mediaUrl}
               hlsSrc={hlsUrl}
               sourceSrc={sourceUrl}
-              defaultResolution={playbackPrefs.defaultPlaybackResolution}
+              defaultResolution={
+                allowInAppSource
+                  ? playbackPrefs.defaultPlaybackResolution
+                  : playbackPrefs.defaultPlaybackResolution === "source"
+                    ? "1080"
+                    : playbackPrefs.defaultPlaybackResolution
+              }
               lutId={
                 colorModeFromMediaMetadata(selectedDetail.mediaMetadata)
                   ? selectedDetail.preferredLutId

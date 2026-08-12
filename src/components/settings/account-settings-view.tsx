@@ -39,6 +39,9 @@ function formatBytes(bytes: number) {
 type AccountPayload = {
   usedBytes: number;
   quotaBytes: number;
+  diskUsedBytes?: number | null;
+  diskTotalBytes?: number | null;
+  allowInAppSource?: boolean;
   username: string;
   email: string;
   role: string;
@@ -54,6 +57,7 @@ type AccountPayload = {
     previewLutId: string | null;
     defaultDLogLutId: string | null;
     defaultDLogMLutId: string | null;
+    allowInAppSource?: boolean | null;
   };
 };
 
@@ -266,6 +270,13 @@ export function AccountSettingsView() {
     account && account.quotaBytes > 0
       ? Math.min(100, (account.usedBytes / account.quotaBytes) * 100)
       : 0;
+  const diskPct =
+    account &&
+    account.diskTotalBytes != null &&
+    account.diskTotalBytes > 0 &&
+    account.diskUsedBytes != null
+      ? Math.min(100, (account.diskUsedBytes / account.diskTotalBytes) * 100)
+      : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -386,16 +397,44 @@ export function AccountSettingsView() {
                   <HardDrive className="size-4 text-muted-foreground" />
                   <p className="text-sm font-semibold">Storage</p>
                 </div>
-                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${usedPct}%` }}
-                  />
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Library
+                    </p>
+                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${usedPct}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {formatBytes(account.usedBytes)} of{" "}
+                      {formatBytes(account.quotaBytes)} used (
+                      {usedPct.toFixed(1)}%)
+                    </p>
+                  </div>
+                  {diskPct != null &&
+                  account.diskUsedBytes != null &&
+                  account.diskTotalBytes != null ? (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Disk (media volume)
+                      </p>
+                      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary/80 transition-all"
+                          style={{ width: `${diskPct}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {formatBytes(account.diskUsedBytes)} of{" "}
+                        {formatBytes(account.diskTotalBytes)} used (
+                        {diskPct.toFixed(1)}%)
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {formatBytes(account.usedBytes)} of{" "}
-                  {formatBytes(account.quotaBytes)} used ({usedPct.toFixed(1)}%)
-                </p>
               </section>
             </div>
           ) : null}
@@ -466,6 +505,18 @@ export function AccountSettingsView() {
                     </button>
                   ))}
                 </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  In-app Source viewing:{" "}
+                  <span className="font-medium text-foreground">
+                    {account.allowInAppSource !== false ? "Allowed" : "Disabled"}
+                  </span>
+                  {account.role === "admin"
+                    ? " (admins always retain Source)"
+                    : account.preferences.allowInAppSource == null
+                      ? " (follows site setting)"
+                      : " (account override)"}
+                  . Downloads of originals stay available.
+                </p>
               </section>
 
               <section className="rounded-2xl border border-border bg-card p-4">

@@ -53,6 +53,11 @@ export const users = pgTable(
         defaultDLogLutId?: string | null;
         /** Default preferred LUT for newly uploaded D-Log M media. */
         defaultDLogMLutId?: string | null;
+        /**
+         * In-app Source (original) playback: true/false override, null/omit = inherit global.
+         * Admins always retain Source regardless of this flag.
+         */
+        allowInAppSource?: boolean | null;
         portfolio?: {
           coverAssetId?: string | null;
           featuredAlbumIds?: string[];

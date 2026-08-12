@@ -288,4 +288,14 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
+Current release: **1.0.1**
+
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.1 highlights
+
+- Timeline scroll and per-tile thumbnail reveal; map paths only at close zoom with viewport culling; colocated marker spiderfy
+- Clearer upload assemble/finalize status; download/ETA text wrapping
+- 180° panoramas use the photo Web/Source viewer (360° stays interactive)
+- Admin Source gate (global + per-user; admins always allowed); library + disk storage displays
+- Asset Edit “Refresh data”; Utilities “Clear finished from list” and “Keep both” for duplicates

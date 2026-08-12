@@ -8,7 +8,11 @@ import {
   DEFAULT_PLAYBACK_RESOLUTION,
   isPlaybackResolution,
 } from "@/lib/playback/resolution";
+import {
+  resolveAllowInAppSource,
+} from "@/lib/playback/source-access";
 import { updateUserProfile } from "@/lib/profiles/queries";
+import { getMediaDiskStats } from "@/lib/storage/disk-stats";
 import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
 
 export const runtime = "nodejs";
@@ -22,9 +26,10 @@ const patchSchema = z.object({
 export async function GET() {
   try {
     const session = await requireApprovedSession();
-    const [storage, user] = await Promise.all([
+    const [storage, user, disk] = await Promise.all([
       getUserStorage(session.user.id),
       findUserById(session.user.id),
+      getMediaDiskStats(),
     ]);
     if (!storage || !user) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -32,6 +37,11 @@ export async function GET() {
 
     const config = loadConfig();
     const storedResolution = user.preferences?.defaultPlaybackResolution;
+    const allowInAppSource = resolveAllowInAppSource({
+      role: user.role,
+      userPreference: user.preferences?.allowInAppSource ?? null,
+      globalAllow: config.playback?.allowInAppSource ?? true,
+    });
     const preferences = {
       theme: user.preferences?.theme ?? config.theme.default,
       downloadOriginalDefault: user.preferences?.downloadOriginalDefault ?? false,
@@ -43,11 +53,15 @@ export async function GET() {
       previewLutId: user.preferences?.previewLutId ?? null,
       defaultDLogLutId: user.preferences?.defaultDLogLutId ?? null,
       defaultDLogMLutId: user.preferences?.defaultDLogMLutId ?? null,
+      allowInAppSource: user.preferences?.allowInAppSource ?? null,
     };
 
     return NextResponse.json({
       usedBytes: storage.storageUsedBytes,
       quotaBytes: storage.storageQuotaBytes,
+      diskUsedBytes: disk?.diskUsedBytes ?? null,
+      diskTotalBytes: disk?.diskTotalBytes ?? null,
+      allowInAppSource,
       username: user.username,
       email: user.email,
       role: user.role,

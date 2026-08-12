@@ -31,6 +31,7 @@ type SettingsView = {
     concurrency: Record<string, number>;
     gates?: { webTranscoding: boolean; panoramaStitch: boolean };
   };
+  playback?: { allowInAppSource: boolean };
   theme: { default: "light" | "dark" | "system"; accent?: string };
   backup?: { enabled: boolean; cron: string; retainDays: number };
   transcoding: {
@@ -234,6 +235,27 @@ export function AdminSettingsPanel() {
             <option value="reject">Reject upload</option>
           </select>
         </label>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border p-4">
+        <h2 className="text-sm font-semibold">Playback</h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.playback?.allowInAppSource !== false}
+            disabled={busy}
+            onChange={(event) =>
+              void save({
+                playback: { allowInAppSource: event.target.checked },
+              })
+            }
+          />
+          Allow in-app Source (camera original)
+        </label>
+        <p className="text-xs text-muted-foreground">
+          When off, players show Web only. Downloads of originals stay allowed.
+          Per-user overrides are in Admin → Users; admins always retain Source.
+        </p>
       </section>
 
       <section className="space-y-3 rounded-xl border border-border p-4">

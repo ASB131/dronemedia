@@ -209,6 +209,7 @@ export function PublicProfileView({ username }: { username: string }) {
   const [lookHeadingDegrees, setLookHeadingDegrees] = useState<number | null>(
     null,
   );
+  const [allowInAppSource, setAllowInAppSource] = useState(true);
   const playbackPrefs = usePlaybackPreferences();
   const mapTheme = useMapTheme();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -266,6 +267,7 @@ export function PublicProfileView({ username }: { username: string }) {
         mapAssets: MapAssetDto[];
         showcase?: PublicPortfolioAssetDto[];
         featuredAlbums?: PublicFeaturedAlbumDto[];
+        allowInAppSource?: boolean;
       };
       if (!mounted) return;
       setProfile(payload.profile);
@@ -273,6 +275,7 @@ export function PublicProfileView({ username }: { username: string }) {
       setShowcase(payload.showcase ?? []);
       setFeaturedAlbums(payload.featuredAlbums ?? []);
       setMapAssets(payload.mapAssets);
+      setAllowInAppSource(payload.allowInAppSource !== false);
       setLoading(false);
     })();
     return () => {
@@ -496,6 +499,13 @@ export function PublicProfileView({ username }: { username: string }) {
       preview.hasLrf ||
       (isPanorama && preview.hasPanoPreview) ||
       equirectReady;
+    const photoSourceUrl = allowInAppSource
+      ? `${originalUrl(username, preview.id)}?playback=source`
+      : null;
+    const videoSourceUrl =
+      allowInAppSource && (preview.hasHls || preview.hasProxy || preview.hasLrf)
+        ? `${originalUrl(username, preview.id)}?playback=source`
+        : null;
     const meta = preview.mediaMetadata;
     const previewColorMode = colorModeFromMediaMetadata(meta);
     const previewLutId = resolveViewerPreviewLutId(
@@ -588,7 +598,7 @@ export function PublicProfileView({ username }: { username: string }) {
             {viewerMode === "photo" && preview.assetType === "photo" ? (
               <PhotoViewer
                 src={originalUrl(username, preview.id)}
-                sourceSrc={`${originalUrl(username, preview.id)}?playback=source`}
+                sourceSrc={photoSourceUrl}
                 alt={preview.displayName}
                 lutId={previewLutId}
                 className="absolute inset-0 size-full"
@@ -599,7 +609,9 @@ export function PublicProfileView({ username }: { username: string }) {
               <PhotoViewer
                 key={`${preview.id}-180`}
                 src={panoUrl(username, preview.id)}
+                sourceSrc={photoSourceUrl}
                 alt={preview.displayName}
+                lutId={previewLutId}
                 className="absolute inset-0 size-full"
               />
             ) : viewerMode === "360" &&
@@ -620,7 +632,9 @@ export function PublicProfileView({ username }: { username: string }) {
               <PhotoViewer
                 key={`${preview.id}-pano-flat`}
                 src={panoUrl(username, preview.id)}
+                sourceSrc={photoSourceUrl}
                 alt={preview.displayName}
+                lutId={previewLutId}
                 className="absolute inset-0 size-full"
               />
             ) : !isPanorama &&
@@ -630,8 +644,14 @@ export function PublicProfileView({ username }: { username: string }) {
                 key={preview.id}
                 src={originalUrl(username, preview.id)}
                 hlsSrc={preview.hasHls ? hlsUrl(username, preview.id) : null}
-                sourceSrc={`${originalUrl(username, preview.id)}?playback=source`}
-                defaultResolution={playbackPrefs.defaultPlaybackResolution}
+                sourceSrc={videoSourceUrl}
+                defaultResolution={
+                  allowInAppSource
+                    ? playbackPrefs.defaultPlaybackResolution
+                    : playbackPrefs.defaultPlaybackResolution === "source"
+                      ? "1080"
+                      : playbackPrefs.defaultPlaybackResolution
+                }
                 lutId={previewLutId}
                 onTimeUpdate={(time) => setPreviewTime(time)}
                 className="absolute inset-0 size-full object-contain"

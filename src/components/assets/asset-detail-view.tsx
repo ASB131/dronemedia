@@ -261,6 +261,15 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const [lookHeadingDegrees, setLookHeadingDegrees] = useState<number | null>(
     null,
   );
+  const [allowInAppSource, setAllowInAppSource] = useState(true);
+  const [refreshBusy, setRefreshBusy] = useState(false);
+  const [refreshOpts, setRefreshOpts] = useState({
+    thumbnails: true,
+    metadata: true,
+    dedup: true,
+    webTranscoding: false,
+    panoramaStitch: false,
+  });
   const playbackPrefs = usePlaybackPreferences();
 
   useEffect(() => {
@@ -323,8 +332,10 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
 
     const detailPayload = (await detailRes.json()) as {
       asset: AssetDetailDto;
+      allowInAppSource?: boolean;
     };
     setAsset(detailPayload.asset);
+    setAllowInAppSource(detailPayload.allowInAppSource !== false);
     setDisplayName(detailPayload.asset.displayName);
     setDescription(detailPayload.asset.description ?? "");
     setTags(detailPayload.asset.tags ?? []);
@@ -656,16 +667,18 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       asset.hasHls ||
       asset.hasProxy ||
       (isPanorama && asset.hasPanoPreview);
-  /** Videos: Source only after a streaming derivative exists. Photos: always allow Source. */
+  /** Videos: Source only after a streaming derivative exists. Photos: always allow Source when gated on. */
   const allowVideoSourcePlayback = asset.hasHls || asset.hasProxy;
   const mediaUrl = `/api/assets/${asset.id}/original`;
   const photoSourceUrl =
-    asset.assetType === "photo"
+    allowInAppSource &&
+    (asset.assetType === "photo" || isPanorama)
       ? `/api/assets/${asset.id}/original?playback=source`
       : null;
-  const videoSourceUrl = allowVideoSourcePlayback
-    ? `/api/assets/${asset.id}/original?playback=source`
-    : null;
+  const videoSourceUrl =
+    allowInAppSource && allowVideoSourcePlayback
+      ? `/api/assets/${asset.id}/original?playback=source`
+      : null;
   const panoUrl = `/api/assets/${asset.id}/pano?v=${PANORAMA_WEB_CACHE_VERSION}`;
   const hlsUrl = asset.hasHls
     ? `/api/assets/${asset.id}/hls/index.m3u8`
@@ -871,7 +884,9 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <PhotoViewer
               key={`${asset.id}-180`}
               src={panoUrl}
+              sourceSrc={photoSourceUrl}
               alt={asset.displayName}
+              lutId={effectiveLutId}
               className="absolute inset-0 size-full"
             />
           ) : viewerMode === "360" &&
@@ -892,7 +907,9 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             <PhotoViewer
               key={`${asset.id}-pano-flat`}
               src={panoUrl}
+              sourceSrc={photoSourceUrl}
               alt={asset.displayName}
+              lutId={effectiveLutId}
               className="absolute inset-0 size-full"
             />
           ) : !isPanorama &&
@@ -902,7 +919,13 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               src={mediaUrl}
               hlsSrc={hlsUrl}
               sourceSrc={videoSourceUrl}
-              defaultResolution={playbackPrefs.defaultPlaybackResolution}
+              defaultResolution={
+                allowInAppSource
+                  ? playbackPrefs.defaultPlaybackResolution
+                  : playbackPrefs.defaultPlaybackResolution === "source"
+                    ? "1080"
+                    : playbackPrefs.defaultPlaybackResolution
+              }
               lutId={effectiveLutId}
               scrubberMarkers={scrubberMarkers}
               seekRequest={seekRequest}
@@ -1596,6 +1619,84 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                 {editMessage ? (
                   <p className="text-xs text-muted-foreground">{editMessage}</p>
                 ) : null}
+                <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Refresh data
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Re-queues processing jobs. Does not re-upload originals.
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                    {(
+                      [
+                        ["thumbnails", "Thumbnails"],
+                        ["metadata", "Metadata"],
+                        ["dedup", "Dedup"],
+                        ["webTranscoding", "Web / HLS"],
+                        ["panoramaStitch", "Panorama stitch"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label key={key} className="inline-flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={refreshOpts[key]}
+                          onChange={(event) =>
+                            setRefreshOpts((prev) => ({
+                              ...prev,
+                              [key]: event.target.checked,
+                            }))
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      refreshBusy ||
+                      !(
+                        refreshOpts.thumbnails ||
+                        refreshOpts.metadata ||
+                        refreshOpts.dedup ||
+                        refreshOpts.webTranscoding ||
+                        refreshOpts.panoramaStitch
+                      )
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        setRefreshBusy(true);
+                        setEditMessage(null);
+                        try {
+                          const response = await fetch(
+                            `/api/assets/${assetId}/refresh`,
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify(refreshOpts),
+                            },
+                          );
+                          const payload = (await response.json().catch(() => null)) as {
+                            message?: string;
+                            error?: string;
+                          } | null;
+                          if (!response.ok) {
+                            setEditMessage(payload?.error ?? "Refresh failed");
+                            return;
+                          }
+                          setEditMessage(
+                            payload?.message ?? "Refresh queued",
+                          );
+                        } finally {
+                          setRefreshBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {refreshBusy ? "Queuing…" : "Refresh data"}
+                  </Button>
+                </div>
               </div>
             </MetaSection>
           </div>

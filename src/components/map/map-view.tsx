@@ -30,6 +30,7 @@ import { colorModeFromMediaMetadata } from "@/lib/luts/color-profile";
 import {
   AUTO_EXPAND_ZOOM,
   COLOCATED_METERS,
+  PATH_MIN_ZOOM,
   distanceMeters,
   layoutColocatedPositions,
 } from "@/lib/map/colocated-layout";
@@ -119,11 +120,15 @@ export function MapView() {
   const [assets, setAssets] = useState<MapAssetDto[]>([]);
   const [flights, setFlights] = useState<MapFlightPathDto[]>([]);
   const [showPaths, setShowPaths] = useState(true);
+  const [pathRedrawToken, setPathRedrawToken] = useState(0);
+  const showPathsRef = useRef(showPaths);
+  showPathsRef.current = showPaths;
   const [typeFilter, setTypeFilter] = useState<AssetTypeFilter>("all");
   const [mapBooted, setMapBooted] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [preview, setPreview] = useState<MapAssetDto | null>(null);
+  const [allowInAppSource, setAllowInAppSource] = useState(true);
   const [series, setSeries] = useState<TelemetrySeriesPoint[]>([]);
   const [scrubberMarkers, setScrubberMarkers] = useState<ScrubberMarker[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
@@ -238,10 +243,17 @@ export function MapView() {
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      const [flightsRes] = await Promise.all([
+      const [flightsRes, accountRes] = await Promise.all([
         fetch("/api/map/flights"),
+        fetch("/api/account"),
         fetchAssetsForMap(null, typeFilterRef.current),
       ]);
+      if (accountRes.ok) {
+        const account = (await accountRes.json()) as {
+          allowInAppSource?: boolean;
+        };
+        if (mounted) setAllowInAppSource(account.allowInAppSource !== false);
+      }
       if (!mounted) return;
       if (flightsRes.ok) {
         const flightsPayload = (await flightsRes.json()) as {
@@ -368,11 +380,11 @@ export function MapView() {
       // individually (with co-located pins fanned out) so each is clickable.
       clusterRef.current = L.markerClusterGroup({
         showCoverageOnHover: false,
-        maxClusterRadius: 64,
+        maxClusterRadius: 56,
         spiderfyOnMaxZoom: true,
         zoomToBoundsOnClick: true,
         disableClusteringAtZoom: AUTO_EXPAND_ZOOM,
-        spiderfyDistanceMultiplier: 2.4,
+        spiderfyDistanceMultiplier: 3.2,
         spiderLegPolylineOptions: {
           weight: 1.5,
           color: "#64748b",
@@ -394,9 +406,11 @@ export function MapView() {
 
       map.on("zoomend", () => {
         syncAssetMarkersRef.current();
+        setPathRedrawToken((value) => value + 1);
       });
 
       map.on("moveend", () => {
+        setPathRedrawToken((value) => value + 1);
         if (!fittedRef.current) return;
         if (moveTimer) clearTimeout(moveTimer);
         moveTimer = setTimeout(() => {
@@ -450,25 +464,31 @@ export function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets]);
 
-  // Sync flight paths
+  // Sync flight paths (close zoom + viewport cull only)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const L = leafletRef.current;
     const layer = pathsLayerRef.current;
     if (!map || !L || !layer) return;
     layer.clearLayers();
-    if (!showPaths) return;
+    if (!showPaths || map.getZoom() < PATH_MIN_ZOOM) return;
 
+    const viewBounds = map.getBounds().pad(0.2);
     for (const flight of flights) {
       const raw = flight.coordinates.map(
         ([lng, lat]) => [lng, lat] as [number, number],
       );
+      const visible = raw.some(([lng, lat]) =>
+        viewBounds.contains(L.latLng(lat, lng)),
+      );
+      if (!visible) continue;
+
       const smoothed = prepareSmoothPath(raw);
-      const latLngs = smoothed.map(
+      const drawLatLngs = smoothed.map(
         ([lng, lat]) => [lat, lng] as LatLngExpression,
       );
-      if (latLngs.length < 2) continue;
-      const line = L.polyline(latLngs, {
+      if (drawLatLngs.length < 2) continue;
+      const line = L.polyline(drawLatLngs, {
         color: mapTheme === "dark" ? "#5b8def" : "#0ea5e9",
         weight: 3,
         opacity: 0.75,
@@ -482,7 +502,7 @@ export function MapView() {
       });
       layer.addLayer(line);
     }
-  }, [flights, showPaths, assets, mapTheme]);
+  }, [flights, showPaths, assets, mapTheme, pathRedrawToken]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -578,6 +598,7 @@ export function MapView() {
                 onChange={(event) => setShowPaths(event.target.checked)}
               />
               Paths
+              <span className="text-[10px] opacity-70">(close zoom)</span>
             </label>
           ) : null}
         </div>
@@ -712,6 +733,11 @@ export function MapView() {
                         <PhotoViewer
                           key={`${preview.id}-180`}
                           src={`/api/assets/${preview.id}/pano?full=1`}
+                          sourceSrc={
+                            allowInAppSource
+                              ? `/api/assets/${preview.id}/original?playback=source`
+                              : null
+                          }
                           alt={preview.displayName}
                           className="absolute inset-0 size-full"
                         />
@@ -746,7 +772,11 @@ export function MapView() {
                       return (
                         <PhotoViewer
                           src={`/api/assets/${preview.id}/original`}
-                          sourceSrc={`/api/assets/${preview.id}/original?playback=source`}
+                          sourceSrc={
+                            allowInAppSource
+                              ? `/api/assets/${preview.id}/original?playback=source`
+                              : null
+                          }
                           alt={preview.displayName}
                           lutId={
                             colorModeFromMediaMetadata(preview.mediaMetadata)
@@ -767,9 +797,18 @@ export function MapView() {
                             ? `/api/assets/${preview.id}/hls/index.m3u8`
                             : null
                         }
-                        sourceSrc={`/api/assets/${preview.id}/original?playback=source`}
+                        sourceSrc={
+                          allowInAppSource
+                            ? `/api/assets/${preview.id}/original?playback=source`
+                            : null
+                        }
                         defaultResolution={
-                          playbackPrefs.defaultPlaybackResolution
+                          allowInAppSource
+                            ? playbackPrefs.defaultPlaybackResolution
+                            : playbackPrefs.defaultPlaybackResolution ===
+                                "source"
+                              ? "1080"
+                              : playbackPrefs.defaultPlaybackResolution
                         }
                         lutId={
                           colorModeFromMediaMetadata(preview.mediaMetadata)

@@ -55,6 +55,11 @@ auth:
     maxAttempts: 5
     lockoutBaseSeconds: 30
 
+playback:
+  # When false, in-app players hide Source (camera original). Downloads stay allowed.
+  # Per-user override in Admin → Users; admins always retain Source.
+  allowInAppSource: true
+
 transcoding:
   # Set nvenc when the worker container has an NVIDIA GPU (docker --gpus).
   hwAccel: none # none | qsv | nvenc | vaapi

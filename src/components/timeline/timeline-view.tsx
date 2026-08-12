@@ -35,6 +35,16 @@ import { cn } from "@/lib/utils";
 
 const VIDEO_HOVER_PREVIEW_MS = 1000;
 
+/** Match Tailwind breakpoints used by the timeline asset grids. */
+function timelineColumnCount(width: number) {
+  if (width >= 1536) return 7;
+  if (width >= 1280) return 6;
+  if (width >= 1024) return 5;
+  if (width >= 768) return 4;
+  if (width >= 640) return 3;
+  return 2;
+}
+
 function AssetTile({
   asset,
   selected,
@@ -126,20 +136,29 @@ function AssetTile({
           …
         </div>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/assets/${asset.id}/thumbnail`}
-          alt=""
-          className={cn(
-            "size-full object-cover transition duration-500 group-hover:brightness-75",
-            "opacity-0 transition-opacity duration-300",
-            thumbLoaded && "opacity-100",
-            previewReady && "opacity-0 group-hover:brightness-100",
-          )}
-          loading="lazy"
-          onLoad={() => setThumbLoaded(true)}
-          onError={() => setThumbFailed(true)}
-        />
+        <>
+          {!thumbLoaded ? (
+            <div
+              className="absolute inset-0 animate-pulse bg-muted"
+              aria-hidden
+            />
+          ) : null}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/api/assets/${asset.id}/thumbnail`}
+            alt=""
+            className={cn(
+              "relative size-full object-cover transition duration-500 group-hover:brightness-75",
+              "opacity-0 transition-opacity duration-500 ease-out",
+              thumbLoaded && "opacity-100",
+              previewReady && "opacity-0 group-hover:brightness-100",
+            )}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setThumbLoaded(true)}
+            onError={() => setThumbFailed(true)}
+          />
+        </>
       )}
 
       {previewArmed ? (
@@ -337,6 +356,19 @@ export function TimelineView({
   }>({ year: null, monthLabel: null });
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const [gridCols, setGridCols] = useState(5);
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const update = () => {
+      setGridCols(timelineColumnCount(el.clientWidth));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const loadTimeline = useCallback(async (cursor?: string) => {
     const searchParams = new URLSearchParams({ limit: "80" });
@@ -430,12 +462,20 @@ export function TimelineView({
       if (!item) return 80;
       if (item.type === "year") return 44;
       if (item.type === "month") return 32;
-      const cols = 5;
+      const cols = Math.max(2, gridCols);
       const rows = Math.ceil(item.section.assets.length / cols);
-      return 36 + rows * 110;
+      const width = parentRef.current?.clientWidth ?? 960;
+      const gap = 4;
+      const tile = Math.max(80, Math.floor((width - gap * (cols - 1)) / cols));
+      return 40 + rows * (tile + gap);
     },
-    overscan: 4,
+    overscan: 8,
   });
+
+  // Re-measure when column count changes so scroll positions stay accurate.
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [gridCols, rowVirtualizer]);
 
   const scrubMarkers = useMemo(() => {
     const markers: Array<{

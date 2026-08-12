@@ -17,7 +17,8 @@ import {
 } from "@/lib/assets/transcoding";
 import { loadConfig } from "@/lib/config";
 import { getWebDb } from "@/lib/db";
-import { assets, drones, luts } from "@/lib/db/schema";
+import { assets, drones, duplicateDismissals, luts } from "@/lib/db/schema";
+import { duplicateMemberFingerprint } from "@/lib/db/schema/duplicate-dismissals";
 import {
   getThumbnailsQueue,
   getWebTranscodingQueue,
@@ -452,11 +453,66 @@ export async function listNearDuplicateCandidates(userId: string, limit = 100) {
       }));
   }
 
+  const dismissals = await db
+    .select({
+      kind: duplicateDismissals.kind,
+      groupKey: duplicateDismissals.groupKey,
+      memberFingerprint: duplicateDismissals.memberFingerprint,
+    })
+    .from(duplicateDismissals)
+    .where(eq(duplicateDismissals.userId, userId));
+
+  const dismissExact = new Map<string, string>();
+  const dismissNear = new Map<string, string>();
+  for (const row of dismissals) {
+    if (row.kind === "exact") dismissExact.set(row.groupKey, row.memberFingerprint);
+    else if (row.kind === "near") dismissNear.set(row.groupKey, row.memberFingerprint);
+  }
+
+  function notDismissed(
+    kind: "exact" | "near",
+    groups: DuplicateGroupDto[],
+  ): DuplicateGroupDto[] {
+    const map = kind === "exact" ? dismissExact : dismissNear;
+    return groups.filter((group) => {
+      const fingerprint = duplicateMemberFingerprint(group.assetIds);
+      const dismissed = map.get(group.hash);
+      return !dismissed || dismissed !== fingerprint;
+    });
+  }
+
+  const near =
+    nearGroups.length > 0 ? nearGroups : toGroups(phashExact);
+
   return {
-    exactHash: toGroups(exactMap),
-    perceptualHash:
-      nearGroups.length > 0 ? nearGroups : toGroups(phashExact),
+    exactHash: notDismissed("exact", toGroups(exactMap)),
+    perceptualHash: notDismissed("near", near),
   };
+}
+
+export async function dismissDuplicateGroup(params: {
+  userId: string;
+  kind: "exact" | "near";
+  hash: string;
+  assetIds: string[];
+}) {
+  const db = getWebDb();
+  const fingerprint = duplicateMemberFingerprint(params.assetIds);
+  await db
+    .delete(duplicateDismissals)
+    .where(
+      and(
+        eq(duplicateDismissals.userId, params.userId),
+        eq(duplicateDismissals.kind, params.kind),
+        eq(duplicateDismissals.groupKey, params.hash),
+      ),
+    );
+  await db.insert(duplicateDismissals).values({
+    userId: params.userId,
+    kind: params.kind,
+    groupKey: params.hash,
+    memberFingerprint: fingerprint,
+  });
 }
 
 function hammingHex(a: string, b: string) {

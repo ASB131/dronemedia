@@ -118,7 +118,7 @@ export function AssetDownloadButton({
         </button>
 
         {open ? (
-          <div className="absolute right-0 top-12 z-50 w-72 rounded-xl border border-white/10 bg-zinc-950/95 p-3 text-sm text-white shadow-xl backdrop-blur-md">
+          <div className="absolute right-0 top-12 z-50 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/10 bg-zinc-950/95 p-3 text-sm text-white shadow-xl backdrop-blur-md">
             <p className="mb-2 text-xs font-medium text-zinc-300">
               {isPanorama ? "Download panorama" : "Download sequence"}
             </p>
@@ -159,9 +159,11 @@ export function AssetDownloadButton({
               </button>
             )}
             {exportMessage ? (
-              <p className="mt-2 text-[11px] text-zinc-400">{exportMessage}</p>
+              <p className="mt-2 break-words text-[11px] leading-snug text-zinc-400">
+                {exportMessage}
+              </p>
             ) : (
-              <p className="mt-2 text-[11px] text-zinc-500">
+              <p className="mt-2 break-words text-[11px] leading-snug text-zinc-500">
                 {isPanorama
                   ? "Keep original DJI tiles, or download the stitched preview used in the 360° viewer."
                   : "Playback uses a compressed proxy. Downloads keep JPEG originals or a high-quality source-resolution MP4."}
@@ -203,7 +205,7 @@ export function AssetDownloadButton({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-12 z-50 w-72 rounded-xl border border-white/10 bg-zinc-950/95 p-3 text-sm text-white shadow-xl backdrop-blur-md">
+        <div className="absolute right-0 top-12 z-50 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/10 bg-zinc-950/95 p-3 text-sm text-white shadow-xl backdrop-blur-md">
           <p className="mb-2 text-xs font-medium text-zinc-300">Download</p>
 
           <div className="mb-3 space-y-2">
@@ -277,7 +279,9 @@ export function AssetDownloadButton({
           ) : null}
 
           {exportMessage ? (
-            <p className="mt-2 text-[11px] text-zinc-400">{exportMessage}</p>
+            <p className="mt-2 break-words text-[11px] leading-snug text-zinc-400">
+              {exportMessage}
+            </p>
           ) : null}
         </div>
       ) : null}

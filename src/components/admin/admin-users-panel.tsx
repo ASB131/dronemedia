@@ -13,6 +13,7 @@ type AdminUser = {
   approvalStatus: "pending" | "approved" | "rejected";
   storageUsedBytes: number;
   storageQuotaBytes: number;
+  allowInAppSource?: boolean | null;
   createdAt: string;
 };
 
@@ -126,6 +127,30 @@ export function AdminUsersPanel({ embedded = false }: { embedded?: boolean }) {
     await reloadUsers();
   }
 
+  async function saveSourcePref(
+    userId: string,
+    value: "inherit" | "allow" | "deny",
+  ) {
+    const allowInAppSource =
+      value === "inherit" ? null : value === "allow";
+    setBusyId(userId);
+    setError(null);
+    const response = await fetch(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowInAppSource }),
+    });
+    setBusyId(null);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setError(payload?.error ?? "Failed to update Source setting");
+      return;
+    }
+    await reloadUsers();
+  }
+
   async function disableUser(userId: string) {
     await updateUser(userId, "rejected", true);
   }
@@ -220,6 +245,7 @@ export function AdminUsersPanel({ embedded = false }: { embedded?: boolean }) {
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium">Storage</th>
                 <th className="px-4 py-2 font-medium">Quota (GB)</th>
+                <th className="px-4 py-2 font-medium">Source</th>
                 <th className="px-4 py-2 font-medium">Actions</th>
               </tr>
             </thead>
@@ -260,6 +286,35 @@ export function AdminUsersPanel({ embedded = false }: { embedded?: boolean }) {
                         Save
                       </Button>
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.role === "admin" ? (
+                      <span className="text-xs text-muted-foreground">
+                        Always on
+                      </span>
+                    ) : (
+                      <select
+                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                        disabled={busyId === user.id}
+                        value={
+                          user.allowInAppSource === true
+                            ? "allow"
+                            : user.allowInAppSource === false
+                              ? "deny"
+                              : "inherit"
+                        }
+                        onChange={(event) =>
+                          void saveSourcePref(
+                            user.id,
+                            event.target.value as "inherit" | "allow" | "deny",
+                          )
+                        }
+                      >
+                        <option value="inherit">Inherit</option>
+                        <option value="allow">Allow</option>
+                        <option value="deny">Deny</option>
+                      </select>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">

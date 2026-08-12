@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { auth } from "@/auth";
 import { jsonError } from "@/lib/api/auth";
+import { allowInAppSourceForRequest } from "@/lib/playback/source-access";
 import { getPublicPortfolioExtras } from "@/lib/profiles/portfolio";
 import {
   getPublicProfile,
@@ -22,10 +24,12 @@ export async function GET(
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    const [assets, mapAssets, extras] = await Promise.all([
+    const session = await auth();
+    const [assets, mapAssets, extras, allowInAppSource] = await Promise.all([
       listPublicPortfolioAssets(username),
       listPublicMapAssetsForUsername(username),
       getPublicPortfolioExtras(username),
+      allowInAppSourceForRequest({ userId: session?.user?.id }),
     ]);
 
     return NextResponse.json({
@@ -38,6 +42,7 @@ export async function GET(
       mapAssets,
       featuredAlbums: extras.featuredAlbums,
       showcase: extras.showcase,
+      allowInAppSource,
     });
   } catch (error) {
     return jsonError(error);

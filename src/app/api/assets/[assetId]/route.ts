@@ -5,6 +5,7 @@ import { softDeleteAsset } from "@/lib/assets/bin";
 import { getAssetDetailForUser } from "@/lib/assets/detail";
 import { updateOwnedAsset } from "@/lib/assets/mutations";
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { allowInAppSourceForUserId } from "@/lib/playback/source-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,8 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ asset });
+    const allowInAppSource = await allowInAppSourceForUserId(session.user.id);
+    return NextResponse.json({ asset, allowInAppSource });
   } catch (error) {
     return jsonError(error);
   }

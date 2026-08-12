@@ -126,6 +126,9 @@ export function UtilitiesView() {
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
   const [busyLarge, setBusyLarge] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [hiddenFinishedJobKeys, setHiddenFinishedJobKeys] = useState<
+    Set<string>
+  >(() => new Set());
 
   async function refreshJobs(options?: { quiet?: boolean }) {
     if (jobsInFlight.current) return;
@@ -279,8 +282,24 @@ export function UtilitiesView() {
 
   const jobList = useMemo(() => {
     if (!jobs) return [];
-    return jobs[jobSection];
-  }, [jobs, jobSection]);
+    const list = jobs[jobSection];
+    if (jobSection !== "completed") return list;
+    return list.filter(
+      (job) => !hiddenFinishedJobKeys.has(`${job.queue}:${job.id}`),
+    );
+  }, [jobs, jobSection, hiddenFinishedJobKeys]);
+
+  function clearFinishedFromList() {
+    if (!jobs) return;
+    setHiddenFinishedJobKeys((prev) => {
+      const next = new Set(prev);
+      for (const job of jobs.completed) {
+        next.add(`${job.queue}:${job.id}`);
+      }
+      return next;
+    });
+    setMessage("Cleared finished jobs from this list (session only)");
+  }
 
   function toggleSelect(groupKey: string, assetId: string) {
     setSelectedByGroup((current) => {
@@ -344,6 +363,39 @@ export function UtilitiesView() {
     }
     setMessage(
       `Moved ${selected.length} item${selected.length === 1 ? "" : "s"} to the bin`,
+    );
+    await loadTab("duplicates");
+  }
+
+  async function keepBoth(group: DuplicateGroupDto) {
+    const key = `${duplicateKind}:${group.hash}`;
+    const assetIds = group.assets?.length
+      ? group.assets.map((asset) => asset.id)
+      : group.assetIds;
+    setBusyGroup(key);
+    setMessage(null);
+    const response = await fetch("/api/utilities/duplicates/dismiss", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: duplicateKind,
+        hash: group.hash,
+        assetIds,
+      }),
+    });
+    setBusyGroup(null);
+    if (!response.ok) {
+      setMessage(
+        duplicateKind === "exact"
+          ? "Failed to keep both"
+          : "Failed to dismiss near-duplicates",
+      );
+      return;
+    }
+    setMessage(
+      duplicateKind === "exact"
+        ? "Kept both — intentional duplicates dismissed"
+        : "Marked as not duplicates",
     );
     await loadTab("duplicates");
   }
@@ -512,6 +564,15 @@ export function UtilitiesView() {
                   />
                   Refresh
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!jobs || jobs.completed.length === 0}
+                  onClick={clearFinishedFromList}
+                  title="Hides completed rows in this browser session. Does not cancel jobs."
+                >
+                  Clear finished from list
+                </Button>
               </div>
             ) : null}
           </div>
@@ -631,6 +692,16 @@ export function UtilitiesView() {
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyGroup === groupKey}
+                            onClick={() => void keepBoth(group)}
+                          >
+                            {duplicateKind === "exact"
+                              ? "Keep both"
+                              : "Not duplicates"}
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"

@@ -14,10 +14,14 @@ const bodySchema = z
     approvalStatus: z.enum(["approved", "rejected"]).optional(),
     asDisable: z.boolean().optional(),
     storageQuotaBytes: z.number().int().positive().max(1024 ** 4).optional(),
+    /** null = inherit global; true/false = override */
+    allowInAppSource: z.boolean().nullable().optional(),
   })
   .refine(
     (body) =>
-      body.approvalStatus !== undefined || body.storageQuotaBytes !== undefined,
+      body.approvalStatus !== undefined ||
+      body.storageQuotaBytes !== undefined ||
+      body.allowInAppSource !== undefined,
     { message: "Nothing to update" },
   );
 
@@ -37,6 +41,7 @@ export async function PATCH(
         role: users.role,
         approvalStatus: users.approvalStatus,
         storageQuotaBytes: users.storageQuotaBytes,
+        preferences: users.preferences,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -59,6 +64,7 @@ export async function PATCH(
     const updates: {
       approvalStatus?: "approved" | "rejected";
       storageQuotaBytes?: number;
+      preferences?: typeof target.preferences;
       updatedAt: Date;
     } = { updatedAt: new Date() };
 
@@ -67,6 +73,12 @@ export async function PATCH(
     }
     if (body.storageQuotaBytes !== undefined) {
       updates.storageQuotaBytes = body.storageQuotaBytes;
+    }
+    if (body.allowInAppSource !== undefined) {
+      updates.preferences = {
+        ...target.preferences,
+        allowInAppSource: body.allowInAppSource,
+      };
     }
 
     await db.update(users).set(updates).where(eq(users.id, userId));

@@ -1,11 +1,14 @@
 /** Media within this distance share a pin and get spread when zoomed in. */
-export const COLOCATED_METERS = 15;
+export const COLOCATED_METERS = 20;
 
 /** At this zoom and above, co-located markers fan out automatically. */
-export const AUTO_EXPAND_ZOOM = 16;
+export const AUTO_EXPAND_ZOOM = 15;
 
-const RING_CAPACITY = 7;
-const RING_RADIUS_PX = 40;
+/** Flight paths only render at this zoom and closer (performance). */
+export const PATH_MIN_ZOOM = 15;
+
+const RING_CAPACITY = 8;
+const RING_RADIUS_PX = 56;
 
 export function distanceMeters(
   a: { lat: number; lng: number },

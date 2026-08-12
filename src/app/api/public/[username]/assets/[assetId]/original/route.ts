@@ -4,7 +4,9 @@ import { mimeTypeForExtension } from "@/lib/assets/media-mime";
 import { ensurePhotoWebPreview } from "@/lib/assets/photo-web-preview";
 import { videoProxyCacheKey } from "@/lib/assets/transcoding";
 import { getPublicAssetForUsername } from "@/lib/profiles/queries";
+import { allowInAppSourceForRequest } from "@/lib/playback/source-access";
 import { buildMediaAssetKey, getStorageAdapter } from "@/lib/storage";
+import { auth } from "@/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +51,16 @@ export async function GET(
     const storage = getStorageAdapter();
     const { searchParams } = new URL(request.url);
     const playbackSource = searchParams.get("playback") === "source";
+
+    if (playbackSource) {
+      const session = await auth();
+      const allowed = await allowInAppSourceForRequest({
+        userId: session?.user?.id,
+      });
+      if (!allowed) {
+        return new Response("Source playback disabled", { status: 403 });
+      }
+    }
 
     let key = buildMediaAssetKey(asset.userId, asset.id, asset.mainFileExt);
     let tier: "media" | "cache" = "media";

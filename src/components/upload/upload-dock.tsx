@@ -31,11 +31,11 @@ function statusLabel(status: string) {
     case "uploading":
       return "Uploading";
     case "assembling":
-      return "Assembling";
+      return "Assembling on server…";
     case "complete":
-      return "Ready";
+      return "Waiting to finalize…";
     case "committed":
-      return "Done";
+      return "In library";
     case "error":
       return "Failed";
     default:
@@ -93,18 +93,40 @@ export function UploadDock() {
   const failed = batch.files.filter((file) => file.status === "error");
   const title =
     batch.status === "committing"
-      ? "Finishing upload…"
+      ? "Moving files to library…"
       : softPaused
         ? "Upload paused"
-        : active
-          ? "Uploading"
-          : batch.status === "done"
-            ? failed.length > 0
-              ? "Upload finished with errors"
-              : "Upload complete"
-            : batch.status === "error"
-              ? "Upload failed"
-              : "Upload queue";
+        : batch.files.some((file) => file.status === "assembling")
+          ? "Assembling uploads…"
+          : active
+            ? "Uploading"
+            : batch.status === "done"
+              ? failed.length > 0
+                ? "Upload finished with errors"
+                : "Upload complete"
+              : batch.status === "error"
+                ? "Upload failed"
+                : "Upload queue";
+
+  const subtitleParts: string[] = [];
+  if (waveInfo) {
+    subtitleParts.push(
+      `Wave ${waveInfo.waveNumber}${
+        waveInfo.pendingCount > 0 ? ` · ${waveInfo.pendingCount} waiting` : ""
+      }`,
+    );
+  }
+  subtitleParts.push(
+    `${formatUploadBytes(stats.bytesUploaded)} / ${formatUploadBytes(stats.bytesTotal)}`,
+  );
+  if (stats.bytesPerSecond > 0 && batch.status !== "committing") {
+    subtitleParts.push(`${formatUploadBytes(stats.bytesPerSecond)}/s`);
+  }
+  if (batch.status === "committing") {
+    subtitleParts.push("Finalizing on server");
+  } else if (active && stats.etaSeconds != null && stats.etaSeconds > 0) {
+    subtitleParts.push(`ETA ${formatEtaSeconds(stats.etaSeconds)}`);
+  }
 
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(100vw-2rem,22rem)] flex-col items-stretch gap-2">
@@ -119,20 +141,8 @@ export function UploadDock() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{title}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {waveInfo
-                ? `Wave ${waveInfo.waveNumber}${
-                    waveInfo.pendingCount > 0
-                      ? ` · ${waveInfo.pendingCount} waiting`
-                      : ""
-                  } · `
-                : ""}
-              {formatUploadBytes(stats.bytesUploaded)} /{" "}
-              {formatUploadBytes(stats.bytesTotal)}
-              {stats.bytesPerSecond > 0
-                ? ` · ${formatUploadBytes(stats.bytesPerSecond)}/s`
-                : ""}
-              {active ? ` · ETA ${formatEtaSeconds(stats.etaSeconds)}` : ""}
+            <p className="break-words text-xs leading-snug text-muted-foreground">
+              {subtitleParts.join(" · ")}
             </p>
           </div>
           <Button

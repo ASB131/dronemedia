@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS builder
-ARG APP_VERSION=1.0.0
+ARG APP_VERSION=1.0.1
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

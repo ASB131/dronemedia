@@ -60,6 +60,8 @@ export function AppShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [usedBytes, setUsedBytes] = useState<number | null>(null);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
+  const [diskUsedBytes, setDiskUsedBytes] = useState<number | null>(null);
+  const [diskTotalBytes, setDiskTotalBytes] = useState<number | null>(null);
   const [pinEnabled, setPinEnabled] = useState(false);
   const [pinUnlocked, setPinUnlocked] = useState(true);
   const [pinInput, setPinInput] = useState("");
@@ -82,6 +84,8 @@ export function AppShell({
       const payload = (await response.json()) as {
         usedBytes: number;
         quotaBytes: number;
+        diskUsedBytes?: number | null;
+        diskTotalBytes?: number | null;
         pinEnabled: boolean;
         preferences: {
           theme: "light" | "dark" | "system";
@@ -90,6 +94,8 @@ export function AppShell({
       };
       setUsedBytes(payload.usedBytes);
       setQuotaBytes(payload.quotaBytes);
+      setDiskUsedBytes(payload.diskUsedBytes ?? null);
+      setDiskTotalBytes(payload.diskTotalBytes ?? null);
       setPinEnabled(payload.pinEnabled);
       applyTheme(payload.preferences.theme);
       if (payload.pinEnabled) {
@@ -124,9 +130,13 @@ export function AppShell({
       const payload = (await response.json()) as {
         usedBytes: number;
         quotaBytes: number;
+        diskUsedBytes?: number | null;
+        diskTotalBytes?: number | null;
       };
       setUsedBytes(payload.usedBytes);
       setQuotaBytes(payload.quotaBytes);
+      setDiskUsedBytes(payload.diskUsedBytes ?? null);
+      setDiskTotalBytes(payload.diskTotalBytes ?? null);
     };
 
     window.addEventListener("dm-preferences", onPrefs);
@@ -158,9 +168,17 @@ export function AppShell({
     setPinInput("");
   }
 
+  const footerUsed =
+    diskUsedBytes != null && diskTotalBytes != null
+      ? diskUsedBytes
+      : usedBytes;
+  const footerTotal =
+    diskUsedBytes != null && diskTotalBytes != null
+      ? diskTotalBytes
+      : quotaBytes;
   const usedPct =
-    usedBytes != null && quotaBytes != null && quotaBytes > 0
-      ? Math.min(100, (usedBytes / quotaBytes) * 100)
+    footerUsed != null && footerTotal != null && footerTotal > 0
+      ? Math.min(100, (footerUsed / footerTotal) * 100)
       : 0;
 
   if (pinEnabled && !pinUnlocked) {
@@ -266,9 +284,14 @@ export function AppShell({
               />
             </div>
             <p className="font-medium text-foreground/80">
-              {usedBytes != null && quotaBytes != null
-                ? `${formatBytes(usedBytes)} / ${formatBytes(quotaBytes)}`
+              {footerUsed != null && footerTotal != null
+                ? `${formatBytes(footerUsed)} / ${formatBytes(footerTotal)}`
                 : "Storage…"}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {diskUsedBytes != null && diskTotalBytes != null
+                ? "Disk (media volume)"
+                : "Library quota"}
             </p>
             <p>Signed in as {user.username}</p>
             <p>

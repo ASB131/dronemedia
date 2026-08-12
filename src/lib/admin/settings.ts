@@ -30,6 +30,7 @@ export function getAdminSettingsView() {
     images: config.images,
     nightly: config.nightly,
     jobs: config.jobs,
+    playback: config.playback,
     theme: config.theme,
     versionCheck: config.versionCheck,
     backup: config.backup,
@@ -74,6 +75,7 @@ export type AdminSettingsPatch = {
       panoramaStitch?: boolean;
     };
   };
+  playback?: { allowInAppSource?: boolean };
   theme?: { default?: AppConfig["theme"]["default"]; accent?: string };
   backup?: {
     enabled?: boolean;

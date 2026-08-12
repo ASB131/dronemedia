@@ -21,6 +21,7 @@ export async function GET() {
         approvalStatus: users.approvalStatus,
         storageUsedBytes: users.storageUsedBytes,
         storageQuotaBytes: users.storageQuotaBytes,
+        preferences: users.preferences,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -28,7 +29,14 @@ export async function GET() {
 
     return NextResponse.json({
       users: rows.map((user) => ({
-        ...user,
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        approvalStatus: user.approvalStatus,
+        storageUsedBytes: user.storageUsedBytes,
+        storageQuotaBytes: user.storageQuotaBytes,
+        allowInAppSource: user.preferences?.allowInAppSource ?? null,
         createdAt: user.createdAt.toISOString(),
       })),
     });
