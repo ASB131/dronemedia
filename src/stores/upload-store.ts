@@ -12,7 +12,11 @@ import {
   type UploadFileState,
 } from "@/lib/upload/client";
 import { getFileRelativePath } from "@/lib/upload/relative-path";
-import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
+import {
+  MAX_UPLOAD_BATCH_BYTES,
+  MAX_UPLOAD_BATCH_FILES,
+  MAX_UPLOAD_BATCH_GB,
+} from "@/lib/upload/validators";
 
 export type UploadStats = {
   bytesUploaded: number;
@@ -26,6 +30,11 @@ export type UploadWaveInfo = {
   pendingCount: number;
 };
 
+export type CommitProgress = {
+  moved: number;
+  total: number;
+};
+
 type UploadStore = {
   batch: UploadBatchState;
   pendingFiles: File[];
@@ -36,6 +45,7 @@ type UploadStore = {
   softPaused: boolean;
   notice: string | null;
   waveInfo: UploadWaveInfo | null;
+  commitProgress: CommitProgress | null;
   setDockExpanded: (expanded: boolean) => void;
   setDockDismissed: (dismissed: boolean) => void;
   setBulkMode: (bulkMode: boolean) => void;
@@ -233,7 +243,41 @@ async function runWave(files: File[]) {
     if (completed.length > 0 && batchId && !stopWaves) {
       useUploadStore.setState((state) => ({
         batch: { ...state.batch, batchId, status: "committing" },
+        commitProgress: { moved: 0, total: completed.length },
       }));
+      const progressPoll = window.setInterval(() => {
+        void (async () => {
+          try {
+            const response = await fetch(`/api/upload/batch/${batchId}`);
+            if (!response.ok) return;
+            const payload = (await response.json()) as {
+              commitProgress?: { moved: number; total: number } | null;
+              files?: Array<{ status: string; assetId: string | null }>;
+            };
+            if (payload.commitProgress) {
+              useUploadStore.setState({
+                commitProgress: {
+                  moved: payload.commitProgress.moved,
+                  total: payload.commitProgress.total,
+                },
+              });
+              return;
+            }
+            const files = payload.files ?? [];
+            const moved = files.filter((file) => Boolean(file.assetId)).length;
+            const total = files.filter(
+              (file) => file.status === "complete" || Boolean(file.assetId),
+            ).length;
+            if (total > 0) {
+              useUploadStore.setState({
+                commitProgress: { moved, total },
+              });
+            }
+          } catch {
+            // Best-effort progress while commit POST is in flight.
+          }
+        })();
+      }, 400);
       try {
         const commitResult = (await commitUploadBatch(batchId)) as {
           warnings?: string[];
@@ -253,6 +297,7 @@ async function runWave(files: File[]) {
                 : file,
             ),
           },
+          commitProgress: null,
           notice:
             commitResult.warnings && commitResult.warnings.length > 0
               ? commitResult.warnings.join(" · ")
@@ -266,7 +311,10 @@ async function runWave(files: File[]) {
             error:
               error instanceof Error ? error.message : "Failed to commit batch",
           },
+          commitProgress: null,
         }));
+      } finally {
+        window.clearInterval(progressPoll);
       }
     } else if (successCount === 0) {
       useUploadStore.setState((state) => ({
@@ -335,8 +383,22 @@ function patchFile(localId: string, patch: Partial<UploadFileState>) {
 function takeNextWave(): File[] {
   const pending = useUploadStore.getState().pendingFiles;
   if (pending.length === 0) return [];
-  const wave = pending.slice(0, MAX_UPLOAD_BATCH_FILES);
-  const rest = pending.slice(MAX_UPLOAD_BATCH_FILES);
+
+  const wave: File[] = [];
+  let bytes = 0;
+  for (const file of pending) {
+    if (
+      wave.length > 0 &&
+      (wave.length >= MAX_UPLOAD_BATCH_FILES ||
+        bytes + file.size > MAX_UPLOAD_BATCH_BYTES)
+    ) {
+      break;
+    }
+    wave.push(file);
+    bytes += file.size;
+  }
+
+  const rest = pending.slice(wave.length);
   useUploadStore.setState({
     pendingFiles: rest,
     waveInfo: {
@@ -345,6 +407,31 @@ function takeNextWave(): File[] {
     },
   });
   return wave;
+}
+
+function estimateWaveCount(files: File[]): number {
+  if (files.length === 0) return 0;
+  let waves = 0;
+  let i = 0;
+  while (i < files.length) {
+    waves += 1;
+    let count = 0;
+    let bytes = 0;
+    while (i < files.length) {
+      const next = files[i]!;
+      if (
+        count > 0 &&
+        (count >= MAX_UPLOAD_BATCH_FILES ||
+          bytes + next.size > MAX_UPLOAD_BATCH_BYTES)
+      ) {
+        break;
+      }
+      bytes += next.size;
+      count += 1;
+      i += 1;
+    }
+  }
+  return waves;
 }
 
 function scheduleStart(delayMs: number) {
@@ -368,6 +455,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   softPaused: false,
   notice: null,
   waveInfo: null,
+  commitProgress: null,
   setDockExpanded: (expanded) => set({ dockExpanded: expanded }),
   setDockDismissed: (dismissed) => set({ dockDismissed: dismissed }),
   setBulkMode: (bulkMode) => set({ bulkMode }),
@@ -384,7 +472,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
     const current = get().pendingFiles;
     const merged = mergeFiles(current, incoming);
     const added = merged.length - current.length;
-    const waves = Math.ceil(merged.length / MAX_UPLOAD_BATCH_FILES);
+    const waves = estimateWaveCount(merged);
     const bulkHint = get().bulkMode
       ? " Bulk mode: long imports can take a while — keep this tab open. Admins can pause heavy processing jobs in Utilities during large imports."
       : "";
@@ -394,7 +482,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       notice = uploading
         ? `Added ${added} file${added === 1 ? "" : "s"} — they’ll upload after the current batch.${bulkHint}`
         : waves > 1
-          ? `Ready: ${merged.length} files (will upload in ${waves} batches of up to ${MAX_UPLOAD_BATCH_FILES}).${bulkHint}`
+          ? `Ready: ${merged.length} files (will upload in ${waves} batches of up to ${MAX_UPLOAD_BATCH_FILES} files or ~${MAX_UPLOAD_BATCH_GB} GB).${bulkHint}`
           : `Ready: ${merged.length} file${merged.length === 1 ? "" : "s"}.${bulkHint}`;
     }
 
@@ -430,6 +518,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         stats: initialStats,
         notice: null,
         waveInfo: null,
+        commitProgress: null,
         dockDismissed: true,
       };
     });
@@ -453,6 +542,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       stats: initialStats,
       notice: null,
       waveInfo: null,
+      commitProgress: null,
       softPaused: false,
       dockDismissed: true,
     });

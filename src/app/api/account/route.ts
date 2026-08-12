@@ -13,7 +13,10 @@ import {
 } from "@/lib/playback/source-access";
 import { updateUserProfile } from "@/lib/profiles/queries";
 import { getMediaDiskStats } from "@/lib/storage/disk-stats";
-import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
+import {
+  MAX_UPLOAD_BATCH_BYTES,
+  MAX_UPLOAD_BATCH_FILES,
+} from "@/lib/upload/validators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +77,7 @@ export async function GET() {
         maxFileSizeBytes: config.upload.maxFileSizeBytes,
         chunkSizeBytes: config.upload.chunkSizeBytes,
         maxBatchFiles: MAX_UPLOAD_BATCH_FILES,
+        maxBatchBytes: MAX_UPLOAD_BATCH_BYTES,
       },
     });
   } catch (error) {

@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { DuplicateGroupDto, LargeFileDto } from "@/lib/assets/mutations";
 import type { JobsStatusDto, JobListItemDto } from "@/lib/jobs/status";
+import type { UploadStagingStatusDto } from "@/lib/upload/staging-status";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -108,6 +109,7 @@ export function UtilitiesView() {
       reason: string;
     }>
   >([]);
+  const [staging, setStaging] = useState<UploadStagingStatusDto | null>(null);
   const [jobSection, setJobSection] = useState<JobSection>("active");
   const [jobsLive, setJobsLive] = useState(false);
   const [jobsRefreshing, setJobsRefreshing] = useState(false);
@@ -150,9 +152,11 @@ export function UtilitiesView() {
           job: string;
           reason: string;
         }>;
+        staging?: UploadStagingStatusDto;
       };
       setJobs(payload.jobs);
       setDeferredJobs(payload.deferred ?? []);
+      setStaging(payload.staging ?? null);
       if (!jobSectionTouched.current) {
         if (payload.jobs.active.length > 0) setJobSection("active");
         else if (payload.jobs.waiting.length > 0) setJobSection("waiting");
@@ -1083,6 +1087,104 @@ export function UtilitiesView() {
               <p className="text-sm text-muted-foreground">No job data</p>
             ) : (
               <>
+                {staging &&
+                (staging.readyInCache > 0 ||
+                  staging.assembling > 0 ||
+                  staging.uploading > 0 ||
+                  staging.committingBatches.length > 0) ? (
+                  <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 p-4">
+                    <h3 className="text-sm font-semibold">
+                      Upload staging / library transfer
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Files land in cache first, then move into the media
+                      library. This shows where your current uploads are.
+                    </p>
+                    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-xl border border-border/60 bg-background/50 px-3 py-2">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Uploading
+                        </dt>
+                        <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                          {staging.uploading}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-background/50 px-3 py-2">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Assembling in cache
+                        </dt>
+                        <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                          {staging.assembling}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-background/50 px-3 py-2">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Ready in cache
+                        </dt>
+                        <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                          {staging.readyInCache}
+                        </dd>
+                        <dd className="text-[11px] text-muted-foreground">
+                          {formatBytes(staging.bytesInCache)} staged
+                        </dd>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-background/50 px-3 py-2">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Moved this round
+                        </dt>
+                        <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                          {staging.movedToLibrary}
+                        </dd>
+                      </div>
+                    </dl>
+                    {staging.committingBatches.length > 0 ? (
+                      <ul className="mt-3 space-y-2 text-sm">
+                        {staging.committingBatches.map((batch) => (
+                          <li
+                            key={batch.batchId}
+                            className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-border/50 px-3 py-2"
+                          >
+                            <span className="font-medium">
+                              {batch.status === "committing"
+                                ? `Moving to library (${batch.moved}/${batch.total})`
+                                : `Waiting in cache (${batch.moved}/${batch.total} linked)`}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {batch.bytesRemaining > 0
+                                ? `${formatBytes(batch.bytesRemaining)} still in cache`
+                                : "Almost done"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {staging.samples.length > 0 ? (
+                      <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                        {staging.samples.slice(0, 12).map((file) => (
+                          <li
+                            key={file.id}
+                            className="flex flex-wrap justify-between gap-2"
+                          >
+                            <span className="truncate font-medium text-foreground/80">
+                              {file.displayName}
+                            </span>
+                            <span>
+                              {file.assetId
+                                ? "In library"
+                                : file.status === "complete"
+                                  ? "In cache · waiting to move"
+                                  : file.status === "assembling"
+                                    ? "Assembling in cache"
+                                    : file.batchStatus === "committing"
+                                      ? "Moving to library…"
+                                      : file.status}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
                 {deferredJobs.length > 0 ? (
                   <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
                     <h3 className="text-sm font-semibold">

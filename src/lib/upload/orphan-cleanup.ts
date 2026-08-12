@@ -9,29 +9,74 @@ import { uploadBatches, uploadFiles } from "@/lib/db/schema";
 import { getLogger } from "@/lib/logger";
 import { getStorageAdapter } from "@/lib/storage";
 import { uploadStagingPrefix } from "@/lib/upload/paths";
+import {
+  COMPLETE_UNCOMMITTED_TTL_MS,
+  FAILED_UPLOAD_TTL_MS,
+} from "@/lib/upload/ttl";
 
 const logger = getLogger().child({ module: "orphan-upload-cleanup" });
 
-/** Assembled-but-never-committed uploads are purged sooner than in-progress ones. */
-const COMPLETE_UNCOMMITTED_TTL_MS = 6 * 60 * 60 * 1000;
+export { FAILED_UPLOAD_TTL_MS };
+
+async function dirSizeBytes(root: string): Promise<number> {
+  let total = 0;
+  async function walk(dir: string) {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        try {
+          const stat = await fs.stat(full);
+          total += stat.size;
+        } catch {
+          // skip
+        }
+      }
+    }
+  }
+  await walk(root);
+  return total;
+}
 
 async function deleteStagingForFile(
   storage: ReturnType<typeof getStorageAdapter>,
   userId: string,
   fileId: string,
   stagingPrefix: string | null,
-) {
+): Promise<{ deleted: number; bytesFreed: number }> {
   const prefix = stagingPrefix || uploadStagingPrefix(userId, fileId);
-  return storage.deletePrefix(prefix, { tier: "cache" });
+  const config = loadConfig();
+  const abs = path.join(config.storage.cachePath, prefix);
+  let bytesFreed = 0;
+  try {
+    bytesFreed = await dirSizeBytes(abs);
+  } catch {
+    bytesFreed = 0;
+  }
+  const deleted = await storage.deletePrefix(prefix, { tier: "cache" });
+  return { deleted, bytesFreed: deleted > 0 ? bytesFreed : 0 };
 }
 
 export async function cleanupOrphanUploads() {
   const db = getWorkerDb();
   const storage = getStorageAdapter();
+  const config = loadConfig();
+  const uploadsRoot = path.join(config.storage.cachePath, "uploads");
+  const bytesBefore = await dirSizeBytes(uploadsRoot);
+
   const now = new Date();
   const completeCutoff = new Date(now.getTime() - COMPLETE_UNCOMMITTED_TTL_MS);
+  const failedCutoff = new Date(now.getTime() - FAILED_UPLOAD_TTL_MS);
 
-  // 1) Expired incomplete uploads (TTL from batch create), or complete-but-uncommitted past 6h.
+  // 1) Expired incomplete uploads (TTL from batch create), complete-but-uncommitted
+  // past 6h, or failed (commit/assemble) past 2h.
   const expiredFiles = await db
     .select({
       id: uploadFiles.id,
@@ -51,20 +96,26 @@ export async function cleanupOrphanUploads() {
             eq(uploadFiles.status, "complete"),
             lt(uploadFiles.updatedAt, completeCutoff),
           ),
+          and(
+            eq(uploadFiles.status, "failed"),
+            lt(uploadFiles.updatedAt, failedCutoff),
+          ),
         ),
       ),
     );
 
   let cleanedFiles = 0;
+  let bytesFreedTracked = 0;
   const touchedBatchIds = new Set<string>();
 
   for (const file of expiredFiles) {
-    await deleteStagingForFile(
+    const { bytesFreed } = await deleteStagingForFile(
       storage,
       file.userId,
       file.id,
       file.stagingPrefix,
     );
+    bytesFreedTracked += bytesFreed;
 
     await db
       .update(uploadFiles)
@@ -91,17 +142,23 @@ export async function cleanupOrphanUploads() {
 
   let cleanedCommittedStaging = 0;
   for (const file of committedFiles) {
-    const deleted = await deleteStagingForFile(
+    const { deleted, bytesFreed } = await deleteStagingForFile(
       storage,
       file.userId,
       file.id,
       file.stagingPrefix,
     );
-    if (deleted > 0) cleanedCommittedStaging += 1;
+    if (deleted > 0) {
+      cleanedCommittedStaging += 1;
+      bytesFreedTracked += bytesFreed;
+    }
   }
 
   // 3) Disk orphans under cache/uploads with no keep-alive DB row.
   const diskOrphans = await cleanupDiskOrphanStaging();
+
+  // 4) Always prune empty uploads/{userId} (and empty parents).
+  const emptyDirsPruned = await pruneEmptyUploadDirs();
 
   let cancelledBatches = 0;
   if (touchedBatchIds.size > 0) {
@@ -139,12 +196,17 @@ export async function cleanupOrphanUploads() {
     }
   }
 
+  const bytesAfter = await dirSizeBytes(uploadsRoot);
+  const bytesFreed = Math.max(bytesBefore - bytesAfter, bytesFreedTracked);
+
   logger.info(
     {
       cleanedFiles,
       cleanedCommittedStaging,
       diskOrphans,
+      emptyDirsPruned,
       cancelledBatches,
+      bytesFreed,
     },
     "Orphan upload cleanup complete",
   );
@@ -153,8 +215,68 @@ export async function cleanupOrphanUploads() {
     cleanedFiles,
     cleanedCommittedStaging,
     diskOrphans,
+    emptyDirsPruned,
     cancelledBatches,
+    bytesFreed,
+    uploadsBytesBefore: bytesBefore,
+    uploadsBytesAfter: bytesAfter,
   };
+}
+
+/**
+ * Remove empty uploads/{userId} directories (and nested empty session dirs).
+ */
+export async function pruneEmptyUploadDirs(): Promise<number> {
+  const config = loadConfig();
+  const uploadsRoot = path.join(config.storage.cachePath, "uploads");
+
+  let pruned = 0;
+  let userIds: string[];
+  try {
+    userIds = await fs.readdir(uploadsRoot);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+
+  for (const userId of userIds) {
+    const userDir = path.join(uploadsRoot, userId);
+    let children: string[];
+    try {
+      const stat = await fs.stat(userDir);
+      if (!stat.isDirectory()) continue;
+      children = await fs.readdir(userDir);
+    } catch {
+      continue;
+    }
+
+    for (const child of children) {
+      const childPath = path.join(userDir, child);
+      try {
+        const childStat = await fs.stat(childPath);
+        if (!childStat.isDirectory()) continue;
+        const nested = await fs.readdir(childPath);
+        if (nested.length === 0) {
+          await fs.rmdir(childPath);
+          pruned += 1;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const remaining = await fs.readdir(userDir);
+      if (remaining.length === 0) {
+        await fs.rmdir(userDir);
+        pruned += 1;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return pruned;
 }
 
 /**
@@ -208,16 +330,6 @@ export async function cleanupDiskOrphanStaging(): Promise<number> {
         tier: "cache",
       });
       removed += 1;
-    }
-
-    // Drop empty user folders.
-    try {
-      const remaining = await fs.readdir(userDir);
-      if (remaining.length === 0) {
-        await fs.rmdir(userDir);
-      }
-    } catch {
-      // ignore
     }
   }
 

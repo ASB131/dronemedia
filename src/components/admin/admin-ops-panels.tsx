@@ -98,18 +98,55 @@ type StorageReport = {
 export function AdminCachePanel() {
   const [report, setReport] = useState<StorageReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanResult, setCleanResult] = useState<string | null>(null);
+
+  async function loadReport() {
+    const response = await fetch("/api/admin/cache");
+    if (!response.ok) {
+      setError("Failed to load storage report");
+      return;
+    }
+    const payload = (await response.json()) as StorageReport;
+    setReport(payload);
+    setError(null);
+  }
 
   useEffect(() => {
-    void (async () => {
-      const response = await fetch("/api/admin/cache");
+    void loadReport();
+  }, []);
+
+  async function cleanUploadStaging() {
+    setCleaning(true);
+    setCleanResult(null);
+    try {
+      const response = await fetch("/api/admin/cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cleanUploadStaging" }),
+      });
       if (!response.ok) {
-        setError("Failed to load storage report");
+        setCleanResult("Clean upload staging failed");
         return;
       }
-      const payload = (await response.json()) as StorageReport;
-      setReport(payload);
-    })();
-  }, []);
+      const payload = (await response.json()) as {
+        bytesFreed?: number;
+        cleanedFiles?: number;
+        diskOrphans?: number;
+        emptyDirsPruned?: number;
+        cleanedCommittedStaging?: number;
+      };
+      const freed = payload.bytesFreed ?? 0;
+      setCleanResult(
+        `Freed ${formatBytes(freed)} · ${payload.cleanedFiles ?? 0} expired files · ${payload.diskOrphans ?? 0} disk orphans · ${payload.emptyDirsPruned ?? 0} empty dirs · ${payload.cleanedCommittedStaging ?? 0} leftover staging`,
+      );
+      await loadReport();
+    } catch {
+      setCleanResult("Clean upload staging failed");
+    } finally {
+      setCleaning(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -175,13 +212,35 @@ export function AdminCachePanel() {
             </dl>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Regenerable cache
-            </h3>
-            <p className="break-all text-xs text-muted-foreground">
-              {report.cache.cachePath}
-            </p>
+          <div className="space-y-3 rounded-xl border border-border p-4 text-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Regenerable cache
+                </h3>
+                <p className="mt-1 break-all text-xs text-muted-foreground">
+                  {report.cache.cachePath}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={cleaning}
+                onClick={() => void cleanUploadStaging()}
+              >
+                {cleaning ? "Cleaning…" : "Clean upload staging now"}
+              </Button>
+            </div>
+            {cleanResult ? (
+              <p className="text-xs text-muted-foreground">{cleanResult}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Runs orphan upload cleanup (expired / failed / disk orphans) and
+                prunes empty uploads folders. Reports megabytes freed from
+                staging.
+              </p>
+            )}
             <dl className="grid gap-1.5 sm:grid-cols-2">
               {Object.entries(report.cache.bytes).map(([key, value]) => (
                 <div key={key} className="flex justify-between gap-3">

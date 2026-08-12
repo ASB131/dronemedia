@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { reclaimContentHashFromBin } from "@/lib/assets/content-hash-bin";
 import {
@@ -30,6 +30,7 @@ import {
   getWebTranscodingQueue,
 } from "@/lib/jobs/queues";
 import { getStorageAdapter, buildMediaAssetKey, buildSequenceFrameKey } from "@/lib/storage";
+import { FAILED_UPLOAD_TTL_MS } from "@/lib/upload/ttl";
 import {
   groupKeyForUploadFile,
   inferAssetType,
@@ -359,6 +360,7 @@ export async function commitUploadBatch(batchId: string, userId: string) {
       .set({
         status: "failed",
         errorMessage: file.errorMessage ?? "Skipped — upload incomplete",
+        expiresAt: new Date(Date.now() + FAILED_UPLOAD_TTL_MS),
         updatedAt: new Date(),
       })
       .where(eq(uploadFiles.id, file.id));
@@ -451,6 +453,26 @@ export async function commitUploadBatch(batchId: string, userId: string) {
   const createdAssets: Array<{ assetId: string; fileIds: string[] }> = [];
   const newMediaAssetIds = new Set<string>();
   let newAssetBytes = 0;
+
+  /** Mark uncommitted files failed so orphan cleanup purges them in ~2h. */
+  async function markFilesFailedForSoonPurge(
+    fileIds: string[],
+    errorMessage: string,
+  ) {
+    if (fileIds.length === 0) return;
+    const expiresAt = new Date(Date.now() + FAILED_UPLOAD_TTL_MS);
+    await db
+      .update(uploadFiles)
+      .set({
+        status: "failed",
+        errorMessage: errorMessage.slice(0, 2000),
+        expiresAt,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(inArray(uploadFiles.id, fileIds), isNull(uploadFiles.assetId)),
+      );
+  }
 
   async function attachTilesToPanoramaAsset(params: {
     assetId: string;
@@ -768,6 +790,10 @@ export async function commitUploadBatch(batchId: string, userId: string) {
         `[commitUploadBatch] hyperlapse ${group.folder}`,
         error,
       );
+      await markFilesFailedForSoonPurge(
+        group.files.map((f) => f.id),
+        `Commit failed: ${message}`,
+      );
     }
   }
   for (const group of panoramaGroups) {
@@ -780,6 +806,10 @@ export async function commitUploadBatch(batchId: string, userId: string) {
       console.error(
         `[commitUploadBatch] panorama ${group.folder}`,
         error,
+      );
+      await markFilesFailedForSoonPurge(
+        group.files.map((f) => f.id),
+        `Commit failed: ${message}`,
       );
     }
   }
@@ -932,6 +962,10 @@ export async function commitUploadBatch(batchId: string, userId: string) {
         error instanceof Error ? error.message : "Commit failed";
       warnings.push(`Failed ${basename}: ${message}`);
       console.error(`[commitUploadBatch] group ${basename}`, error);
+      await markFilesFailedForSoonPurge(
+        groupFiles.map((f) => f.id),
+        `Commit failed: ${message}`,
+      );
     }
   }
 

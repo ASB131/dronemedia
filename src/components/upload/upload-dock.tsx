@@ -51,6 +51,7 @@ export function UploadDock() {
   const dockDismissed = useUploadStore((s) => s.dockDismissed);
   const softPaused = useUploadStore((s) => s.softPaused);
   const waveInfo = useUploadStore((s) => s.waveInfo);
+  const commitProgress = useUploadStore((s) => s.commitProgress);
   const notice = useUploadStore((s) => s.notice);
   const setDockExpanded = useUploadStore((s) => s.setDockExpanded);
   const setDockDismissed = useUploadStore((s) => s.setDockDismissed);
@@ -93,7 +94,9 @@ export function UploadDock() {
   const failed = batch.files.filter((file) => file.status === "error");
   const title =
     batch.status === "committing"
-      ? "Moving files to library…"
+      ? commitProgress && commitProgress.total > 0
+        ? `Moving to library (${commitProgress.moved}/${commitProgress.total})`
+        : "Moving files to library…"
       : softPaused
         ? "Upload paused"
         : batch.files.some((file) => file.status === "assembling")
@@ -123,7 +126,11 @@ export function UploadDock() {
     subtitleParts.push(`${formatUploadBytes(stats.bytesPerSecond)}/s`);
   }
   if (batch.status === "committing") {
-    subtitleParts.push("Finalizing on server");
+    subtitleParts.push(
+      commitProgress && commitProgress.total > 0
+        ? "Cache → library"
+        : "Finalizing on server",
+    );
   } else if (active && stats.etaSeconds != null && stats.etaSeconds > 0) {
     subtitleParts.push(`ETA ${formatEtaSeconds(stats.etaSeconds)}`);
   }

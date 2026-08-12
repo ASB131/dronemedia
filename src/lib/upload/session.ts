@@ -11,6 +11,7 @@ import {
 import { parseFilename } from "@/lib/upload/filename";
 import { normalizeRelativePath } from "@/lib/upload/sequences";
 import { uploadStagingPrefix } from "@/lib/upload/paths";
+import { FAILED_UPLOAD_TTL_MS } from "@/lib/upload/ttl";
 import type { UploadInitBody } from "@/lib/upload/validators";
 
 export async function createUploadBatch(userId: string, body: UploadInitBody) {
@@ -146,7 +147,16 @@ export async function getBatchStatus(batchId: string, userId: string) {
     .from(uploadFiles)
     .where(eq(uploadFiles.batchId, batchId));
 
-  return { batch: batch[0], files };
+  const moved = files.filter((file) => Boolean(file.assetId)).length;
+  const commitTotal = files.filter(
+    (file) => file.status === "complete" || Boolean(file.assetId),
+  ).length;
+  const commitProgress =
+    batch[0].status === "committing" && commitTotal > 0
+      ? { moved, total: commitTotal, phase: "moving" as const }
+      : null;
+
+  return { batch: batch[0], files, commitProgress };
 }
 
 export async function recordUploadedChunk(params: {
@@ -234,6 +244,7 @@ export async function markUploadFileFailed(params: {
     .set({
       status: "failed",
       errorMessage: params.errorMessage?.slice(0, 2000) ?? "Upload failed",
+      expiresAt: new Date(Date.now() + FAILED_UPLOAD_TTL_MS),
       updatedAt: new Date(),
     })
     .where(eq(uploadFiles.id, params.fileId))

@@ -11,7 +11,10 @@ import {
   type UploadFileState,
 } from "@/lib/upload/client";
 import { collectFilesFromDataTransfer } from "@/lib/upload/relative-path";
-import { MAX_UPLOAD_BATCH_FILES } from "@/lib/upload/validators";
+import {
+  MAX_UPLOAD_BATCH_FILES,
+  MAX_UPLOAD_BATCH_GB,
+} from "@/lib/upload/validators";
 import { useUploadStore } from "@/stores/upload-store";
 
 const DEFAULT_MAX_FILE_BYTES = 80 * 1024 * 1024 * 1024;
@@ -234,9 +237,10 @@ export function UploadZone() {
           different times (stitch first, tiles later).
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Limits: up to {MAX_UPLOAD_BATCH_FILES} files per batch · up to{" "}
-          {formatUploadBytes(maxFileSizeBytes)} per file · uploads continue in
-          the dock while you browse. Closing this tab stops the transfer.
+          Limits: up to {MAX_UPLOAD_BATCH_FILES} files or ~{MAX_UPLOAD_BATCH_GB}{" "}
+          GB per wave · up to {formatUploadBytes(maxFileSizeBytes)} per file ·
+          uploads continue in the dock while you browse. Closing this tab stops
+          the transfer.
         </p>
       </div>
 

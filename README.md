@@ -288,9 +288,15 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
-Current release: **1.0.1**
+Current release: **1.0.2**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.2 highlights
+
+- Upload staging hygiene: prune empty uploads dirs, admin “Clean upload staging now” with MB freed, failed commits purged in ~2h
+- Jobs page shows cache staging vs library transfer; finalize shows “Moving to library (n/m)”
+- Upload waves cap by file count **or** ~8 GB so huge videos don’t stall small photos
 
 ### v1.0.1 highlights
 
