@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { addAssetToAlbum } from "@/lib/albums/queries";
+import { purgeLiveAssets } from "@/lib/assets/bin";
 import { bulkUpdateOwnedAssets } from "@/lib/assets/mutations";
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
 
@@ -14,6 +15,7 @@ const bodySchema = z.object({
     "favorite",
     "unfavorite",
     "bin",
+    "purge",
     "addToAlbum",
     "makePublic",
     "makePrivate",
@@ -43,6 +45,11 @@ export async function POST(request: Request) {
         if (result) added += 1;
       }
       return NextResponse.json({ ok: true, added });
+    }
+
+    if (body.action === "purge") {
+      const result = await purgeLiveAssets(session.user.id, body.assetIds);
+      return NextResponse.json({ ok: true, ...result });
     }
 
     const result = await bulkUpdateOwnedAssets(session.user.id, body.assetIds, {

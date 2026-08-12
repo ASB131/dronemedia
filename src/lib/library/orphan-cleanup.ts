@@ -283,6 +283,116 @@ export async function cleanupOrphanMediaFolders(userId: string) {
     removed += 1;
   }
 
+  // Drop empty user media root when nothing remains.
+  try {
+    const left = await fsp.readdir(userDir);
+    if (left.length === 0) {
+      await fsp.rmdir(userDir);
+    }
+  } catch {
+    // ignore
+  }
+
+  return { removed };
+}
+
+const CACHE_ASSET_BUCKETS = [
+  "thumbnails",
+  "proxies",
+  "hls",
+  "panos",
+  "previews",
+] as const;
+
+/**
+ * Remove cache derivatives (thumbs/HLS/panos/…) for asset ids that no longer
+ * exist in the DB (e.g. after emptying the bin). Soft-deleted assets keep cache.
+ */
+export async function cleanupOrphanCacheFolders(userId: string) {
+  const config = loadConfig();
+  const cacheRoot = config.storage.cachePath;
+  const storage = getStorageAdapter();
+  const db = getWebDb();
+
+  const known = await db
+    .select({ id: assets.id })
+    .from(assets)
+    .where(eq(assets.userId, userId));
+  const knownIds = new Set(known.map((row) => row.id));
+
+  let removed = 0;
+
+  for (const bucket of CACHE_ASSET_BUCKETS) {
+    const userDir = path.join(cacheRoot, bucket, userId);
+    let entries: string[];
+    try {
+      entries = await fsp.readdir(userDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const assetId = entry.replace(/\.[^.]+$/, "");
+      if (!UUID_DIR.test(assetId) || knownIds.has(assetId)) continue;
+
+      const fullPath = path.join(userDir, entry);
+      try {
+        const stat = await fsp.stat(fullPath);
+        if (stat.isDirectory()) {
+          await storage.deletePrefix(`${bucket}/${userId}/${entry}`, {
+            tier: "cache",
+          });
+        } else {
+          await storage.delete(`${bucket}/${userId}/${entry}`, {
+            tier: "cache",
+          });
+        }
+        removed += 1;
+      } catch {
+        // ignore missing
+      }
+    }
+
+    try {
+      const left = await fsp.readdir(userDir);
+      if (left.length === 0) await fsp.rmdir(userDir);
+    } catch {
+      // ignore
+    }
+  }
+
+  // exports/{userId}/{assetId}-*.mp4
+  const exportsDir = path.join(cacheRoot, "exports", userId);
+  try {
+    const exportEntries = await fsp.readdir(exportsDir);
+    for (const entry of exportEntries) {
+      const match = entry.match(
+        /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i,
+      );
+      const assetId = match?.[1];
+      if (!assetId || knownIds.has(assetId)) continue;
+      await storage.delete(`exports/${userId}/${entry}`, { tier: "cache" });
+      removed += 1;
+    }
+    const left = await fsp.readdir(exportsDir);
+    if (left.length === 0) await fsp.rmdir(exportsDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  // Empty uploads/{userId} staging dirs (no nested sessions left).
+  const uploadsUserDir = path.join(cacheRoot, "uploads", userId);
+  try {
+    const uploadEntries = await fsp.readdir(uploadsUserDir);
+    if (uploadEntries.length === 0) {
+      await fsp.rmdir(uploadsUserDir);
+      removed += 1;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
   return { removed };
 }
 
@@ -290,6 +400,7 @@ export async function cleanupLibraryOrphans(userId: string) {
   const emptyFlights = await deleteEmptyFlightsForUser(userId);
   const sharesResult = await cleanupOrphanSharesForUser(userId);
   const media = await cleanupOrphanMediaFolders(userId);
+  const cache = await cleanupOrphanCacheFolders(userId);
 
   logger.info(
     {
@@ -298,6 +409,7 @@ export async function cleanupLibraryOrphans(userId: string) {
       sharesRevoked: sharesResult.revoked,
       sharesRemoved: sharesResult.removed,
       mediaFoldersRemoved: media.removed,
+      cacheFoldersRemoved: cache.removed,
     },
     "Library orphan cleanup complete",
   );
@@ -307,5 +419,6 @@ export async function cleanupLibraryOrphans(userId: string) {
     sharesRevoked: sharesResult.revoked,
     sharesRemoved: sharesResult.removed,
     mediaFoldersRemoved: media.removed,
+    cacheFoldersRemoved: cache.removed,
   };
 }

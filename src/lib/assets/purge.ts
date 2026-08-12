@@ -1,3 +1,6 @@
+import fsp from "node:fs/promises";
+import path from "node:path";
+
 import { eq } from "drizzle-orm";
 
 import type { Database } from "@/lib/db";
@@ -6,6 +9,7 @@ import {
   deleteFlightIfNoAssets,
   deleteSharesForTarget,
 } from "@/lib/library/orphan-cleanup";
+import { loadConfig } from "@/lib/config";
 import { buildMediaAssetKey, getStorageAdapter } from "@/lib/storage";
 import { videoHlsPrefix } from "@/lib/assets/hls";
 import {
@@ -77,6 +81,21 @@ export async function purgeAssetPermanently(
   await storage.delete(panoramaEquirectWebCacheKey(userId, assetId), {
     tier: "cache",
   });
+  // Wipe whole pano cache dir (versioned filenames / leftovers).
+  await storage.deletePrefix(`panos/${userId}/${assetId}`, { tier: "cache" });
+
+  // Sequence / LUT export MP4s: exports/{userId}/{assetId}-*.mp4
+  try {
+    const config = loadConfig();
+    const exportsDir = path.join(config.storage.cachePath, "exports", userId);
+    const entries = await fsp.readdir(exportsDir);
+    for (const entry of entries) {
+      if (!entry.startsWith(`${assetId}-`) && entry !== assetId) continue;
+      await storage.delete(`exports/${userId}/${entry}`, { tier: "cache" });
+    }
+  } catch {
+    // exports dir may not exist
+  }
 
   await db.delete(assets).where(eq(assets.id, assetId));
 

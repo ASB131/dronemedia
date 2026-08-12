@@ -330,11 +330,11 @@ export function UtilitiesView() {
     });
   }
 
-  async function binSelected(group: DuplicateGroupDto) {
+  async function deleteSelectedDuplicates(group: DuplicateGroupDto) {
     const key = `${duplicateKind}:${group.hash}`;
     const selected = selectedByGroup[key] ?? [];
     if (selected.length === 0) {
-      setMessage("Select items to move to the bin");
+      setMessage("Select items to delete");
       return;
     }
     if (selected.length >= group.assets.length) {
@@ -343,7 +343,7 @@ export function UtilitiesView() {
     }
     if (
       !confirm(
-        `Move ${selected.length} duplicate${selected.length === 1 ? "" : "s"} to the bin?`,
+        `Permanently delete ${selected.length} duplicate${selected.length === 1 ? "" : "s"}?\n\nThis removes originals plus thumbnails, previews, HLS, and other cache for those items. This cannot be undone.`,
       )
     ) {
       return;
@@ -354,16 +354,24 @@ export function UtilitiesView() {
     const response = await fetch("/api/assets/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: selected, action: "bin" }),
+      body: JSON.stringify({ assetIds: selected, action: "purge" }),
     });
     setBusyGroup(null);
     if (!response.ok) {
-      setMessage("Failed to bin selected duplicates");
+      setMessage("Failed to delete selected duplicates");
       return;
     }
+    const payload = (await response.json().catch(() => null)) as {
+      purged?: number;
+    } | null;
     setMessage(
-      `Moved ${selected.length} item${selected.length === 1 ? "" : "s"} to the bin`,
+      `Deleted ${payload?.purged ?? selected.length} duplicate${(payload?.purged ?? selected.length) === 1 ? "" : "s"} (media + cache)`,
     );
+    setSelectedByGroup((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     await loadTab("duplicates");
   }
 
@@ -718,10 +726,10 @@ export function UtilitiesView() {
                             disabled={
                               busyGroup === groupKey || selected.length === 0
                             }
-                            onClick={() => void binSelected(group)}
+                            onClick={() => void deleteSelectedDuplicates(group)}
                           >
                             <Trash2 className="size-3.5" />
-                            Bin selected
+                            Delete selected
                           </Button>
                         </div>
                       </div>

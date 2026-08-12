@@ -364,6 +364,13 @@ export async function commitUploadBatch(batchId: string, userId: string) {
       .where(eq(uploadFiles.id, file.id));
   }
 
+  const warnings: string[] = [];
+  if (skippedIncompleteCount > 0) {
+    warnings.push(
+      `${skippedIncompleteCount} file${skippedIncompleteCount === 1 ? "" : "s"} failed and were skipped`,
+    );
+  }
+
   if (config.deduplication.onDuplicate === "reject") {
     for (const file of files) {
       if (!file.contentHash) continue;
@@ -391,6 +398,27 @@ export async function commitUploadBatch(batchId: string, userId: string) {
           `Duplicate file detected (matches asset ${matchAssetId})`,
         );
       }
+    }
+  } else {
+    // flag: allow commit of identical hashes; surface in Utilities → Duplicates.
+    let duplicateMatches = 0;
+    for (const file of files) {
+      if (!file.contentHash) continue;
+      if (
+        isTelemetryExtension(file.extension) ||
+        isProxyExtension(file.extension)
+      ) {
+        continue;
+      }
+      const matchAssetId = await contentHashMatches(userId, [
+        file.contentHash,
+      ]);
+      if (matchAssetId) duplicateMatches += 1;
+    }
+    if (duplicateMatches > 0) {
+      warnings.push(
+        `${duplicateMatches} file${duplicateMatches === 1 ? "" : "s"} match existing library content — review in Utilities → Duplicates (Keep both or Bin)`,
+      );
     }
   }
 
@@ -728,18 +756,34 @@ export async function commitUploadBatch(batchId: string, userId: string) {
   }
 
   for (const group of hyperlapseGroups) {
-    await commitSequenceGroup(group, "hyperlapse");
+    try {
+      await commitSequenceGroup(group, "hyperlapse");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Sequence commit failed";
+      warnings.push(
+        `Failed hyperlapse ${group.folder}: ${message}`,
+      );
+      console.error(
+        `[commitUploadBatch] hyperlapse ${group.folder}`,
+        error,
+      );
+    }
   }
   for (const group of panoramaGroups) {
-    await commitSequenceGroup(group, "panorama");
+    try {
+      await commitSequenceGroup(group, "panorama");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Sequence commit failed";
+      warnings.push(`Failed panorama ${group.folder}: ${message}`);
+      console.error(
+        `[commitUploadBatch] panorama ${group.folder}`,
+        error,
+      );
+    }
   }
 
-  const warnings: string[] = [];
-  if (skippedIncompleteCount > 0) {
-    warnings.push(
-      `${skippedIncompleteCount} file${skippedIncompleteCount === 1 ? "" : "s"} failed and were skipped`,
-    );
-  }
   const groups = new Map<string, typeof nonSequenceFiles>();
   for (const file of nonSequenceFiles) {
     const key = groupKeyForUploadFile(file.basename, file.extension);
@@ -749,137 +793,146 @@ export async function commitUploadBatch(batchId: string, userId: string) {
   }
 
   for (const [basename, groupFiles] of groups) {
-    const extensions = groupFiles.map((f) => f.extension);
+    try {
+      const extensions = groupFiles.map((f) => f.extension);
 
-    if (isSidecarOnlyGroup(extensions)) {
-      const existing = await findAssetForSidecarBasename(userId, basename);
-      if (!existing) {
-        // Don't abort the rest of the batch for an orphan .srt/.lrf.
+      if (isSidecarOnlyGroup(extensions)) {
+        const existing = await findAssetForSidecarBasename(userId, basename);
+        if (!existing) {
+          // Don't abort the rest of the batch for an orphan .srt/.lrf.
+          warnings.push(
+            `Skipped ${basename}.${extensions[0]} — no matching media in this batch or library`,
+          );
+          continue;
+        }
+        const attached = await attachSidecarFiles({
+          userId,
+          assetId: existing.id,
+          groupFiles,
+        });
+        createdAssets.push(attached);
+        continue;
+      }
+
+      const assetType = inferAssetType(extensions);
+      if (!assetType) {
         warnings.push(
-          `Skipped ${basename}.${extensions[0]} — no matching media in this batch or library`,
+          `Skipped ${basename} — unsupported types: ${extensions.join(", ")}`,
         );
         continue;
       }
-      const attached = await attachSidecarFiles({
-        userId,
-        assetId: existing.id,
-        groupFiles,
-      });
-      createdAssets.push(attached);
-      continue;
-    }
 
-    const assetType = inferAssetType(extensions);
-    if (!assetType) {
-      throw new Error(
-        `Unsupported file types in group: ${extensions.join(", ")}`,
-      );
-    }
+      const mainExt = pickMainExtension(extensions);
+      if (!mainExt) {
+        warnings.push(`Skipped ${basename} — could not determine main file`);
+        continue;
+      }
 
-    const mainExt = pickMainExtension(extensions);
-    if (!mainExt) {
-      throw new Error("Could not determine main file for asset group");
-    }
+      const displayName = pickMainDisplayName(groupFiles);
 
-    const displayName = pickMainDisplayName(groupFiles);
-
-    // DJI_0424.JPG uploaded alone (or after tiles) → attach to PANORAMA/100_0424.
-    if (assetType === "photo") {
-      const djiMain = groupFiles.find((file) =>
-        isDjiStitchedPanoramaFilename(file.relativePath ?? file.displayName),
-      );
-      const parsed = djiMain
-        ? parseDjiStitchedPanoramaFilename(
-            djiMain.relativePath ?? djiMain.displayName,
-          )
-        : null;
-      if (djiMain && parsed && groupFiles.length === 1) {
-        const panorama = await findPanoramaForCaptureIndex(
-          userId,
-          parsed.captureIndex,
+      // DJI_0424.JPG uploaded alone (or after tiles) → attach to PANORAMA/100_0424.
+      if (assetType === "photo") {
+        const djiMain = groupFiles.find((file) =>
+          isDjiStitchedPanoramaFilename(file.relativePath ?? file.displayName),
         );
-        if (panorama) {
-          await attachAssembledDjiToPanorama({
+        const parsed = djiMain
+          ? parseDjiStitchedPanoramaFilename(
+              djiMain.relativePath ?? djiMain.displayName,
+            )
+          : null;
+        if (djiMain && parsed && groupFiles.length === 1) {
+          const panorama = await findPanoramaForCaptureIndex(
             userId,
-            panoramaId: panorama.id,
-            file: djiMain,
-            bumpFileSize: true,
-            restitch: true,
-          });
-          newAssetBytes += djiMain.fileSizeBytes;
-          createdAssets.push({
-            assetId: panorama.id,
-            fileIds: [djiMain.id],
-          });
-          continue;
+            parsed.captureIndex,
+          );
+          if (panorama) {
+            await attachAssembledDjiToPanorama({
+              userId,
+              panoramaId: panorama.id,
+              file: djiMain,
+              bumpFileSize: true,
+              restitch: true,
+            });
+            newAssetBytes += djiMain.fileSizeBytes;
+            createdAssets.push({
+              assetId: panorama.id,
+              fileIds: [djiMain.id],
+            });
+            continue;
+          }
         }
       }
-    }
 
-    const assetId = crypto.randomUUID();
+      const assetId = crypto.randomUUID();
 
-    let totalAssetBytes = 0;
-    let primaryHash: string | null = null;
-    let clientModifiedAt: Date | null = null;
-    for (const file of groupFiles) {
-      totalAssetBytes += file.fileSizeBytes;
-      if (file.extension === mainExt) {
-        primaryHash = file.contentHash ?? null;
-        clientModifiedAt = file.clientModifiedAt ?? null;
+      let totalAssetBytes = 0;
+      let primaryHash: string | null = null;
+      let clientModifiedAt: Date | null = null;
+      for (const file of groupFiles) {
+        totalAssetBytes += file.fileSizeBytes;
+        if (file.extension === mainExt) {
+          primaryHash = file.contentHash ?? null;
+          clientModifiedAt = file.clientModifiedAt ?? null;
+        }
       }
-    }
-    newAssetBytes += totalAssetBytes;
+      newAssetBytes += totalAssetBytes;
 
-    await db.insert(assets).values({
-      id: assetId,
-      userId,
-      displayName,
-      assetType,
-      mainFileExt: mainExt,
-      hasSrt: groupFiles.some((f) => isTelemetryExtension(f.extension)),
-      hasLrf: groupFiles.some((f) => isProxyExtension(f.extension)),
-      contentHash: primaryHash,
-      fileSizeBytes: totalAssetBytes,
-      // Provisional — metadata/SRT workers refine from EXIF / SRT / container tags.
-      capturedAtOriginal: clientModifiedAt,
-    });
-
-    for (const file of groupFiles) {
-      const assembledKey = uploadAssembledKey(userId, file.id);
-      const mediaKey = buildMediaAssetKey(userId, assetId, file.extension);
-
-      await storage.move(assembledKey, mediaKey, {
-        fromTier: "cache",
-        toTier: "media",
-      });
-
-      if (file.contentHash) {
-        await reclaimContentHashFromBin(userId, file.contentHash);
-      }
-
-      await db.insert(assetFiles).values({
-        assetId,
+      await db.insert(assets).values({
+        id: assetId,
         userId,
-        extension: file.extension,
-        contentHash: file.contentHash!,
-        fileSizeBytes: file.fileSizeBytes,
+        displayName,
+        assetType,
+        mainFileExt: mainExt,
+        hasSrt: groupFiles.some((f) => isTelemetryExtension(f.extension)),
+        hasLrf: groupFiles.some((f) => isProxyExtension(f.extension)),
+        contentHash: primaryHash,
+        fileSizeBytes: totalAssetBytes,
+        // Provisional — metadata/SRT workers refine from EXIF / SRT / container tags.
+        capturedAtOriginal: clientModifiedAt,
       });
 
-      await db
-        .update(uploadFiles)
-        .set({ assetId, updatedAt: new Date() })
-        .where(eq(uploadFiles.id, file.id));
+      for (const file of groupFiles) {
+        const assembledKey = uploadAssembledKey(userId, file.id);
+        const mediaKey = buildMediaAssetKey(userId, assetId, file.extension);
 
-      await storage.deletePrefix(uploadStagingPrefix(userId, file.id), {
-        tier: "cache",
+        await storage.move(assembledKey, mediaKey, {
+          fromTier: "cache",
+          toTier: "media",
+        });
+
+        if (file.contentHash) {
+          await reclaimContentHashFromBin(userId, file.contentHash);
+        }
+
+        await db.insert(assetFiles).values({
+          assetId,
+          userId,
+          extension: file.extension,
+          contentHash: file.contentHash!,
+          fileSizeBytes: file.fileSizeBytes,
+        });
+
+        await db
+          .update(uploadFiles)
+          .set({ assetId, updatedAt: new Date() })
+          .where(eq(uploadFiles.id, file.id));
+
+        await storage.deletePrefix(uploadStagingPrefix(userId, file.id), {
+          tier: "cache",
+        });
+      }
+
+      createdAssets.push({
+        assetId,
+        fileIds: groupFiles.map((f) => f.id),
       });
+      newMediaAssetIds.add(assetId);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Commit failed";
+      warnings.push(`Failed ${basename}: ${message}`);
+      console.error(`[commitUploadBatch] group ${basename}`, error);
     }
-
-    createdAssets.push({
-      assetId,
-      fileIds: groupFiles.map((f) => f.id),
-    });
-    newMediaAssetIds.add(assetId);
   }
 
   if (newAssetBytes > 0) {

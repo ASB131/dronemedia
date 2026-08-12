@@ -153,3 +153,37 @@ export async function purgeBinAssets(userId: string, assetIds: string[]) {
 
   return { purged };
 }
+
+/**
+ * Permanently delete live (non-binned) assets — originals, thumbs, HLS, panos,
+ * exports, and related orphans. Used by Utilities → Duplicates "Delete selected".
+ */
+export async function purgeLiveAssets(userId: string, assetIds: string[]) {
+  if (assetIds.length === 0) return { purged: 0 };
+  const db = getWebDb();
+  const rows = await db
+    .select({ id: assets.id })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.userId, userId),
+        isNull(assets.deletedAt),
+        inArray(assets.id, assetIds),
+      ),
+    );
+
+  let purged = 0;
+  for (const row of rows) {
+    const ok = await purgeAssetPermanently(db, userId, row.id, {
+      skipStorageReconcile: true,
+    });
+    if (ok) purged += 1;
+  }
+
+  if (purged > 0) {
+    await reconcileUserStorageUsed(userId, db);
+    await cleanupLibraryOrphans(userId);
+  }
+
+  return { purged };
+}

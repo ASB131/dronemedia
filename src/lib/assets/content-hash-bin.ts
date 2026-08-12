@@ -3,7 +3,7 @@ import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { getWebDb } from "@/lib/db";
 import { assetFiles, assets, sequenceFrames } from "@/lib/db/schema";
 
-/** Soft-deleted assets park hashes so live re-uploads can reuse the same file. */
+/** Soft-deleted assets park hashes so restore/re-upload stays unambiguous. */
 export function toBinnedContentHash(assetId: string, contentHash: string): string {
   if (contentHash.startsWith("bin:")) return contentHash;
   return `bin:${assetId}:${contentHash}`;
@@ -14,7 +14,7 @@ export function fromBinnedContentHash(contentHash: string): string {
   return match?.[1] ?? contentHash;
 }
 
-/** Rename content hashes for soft-deleted assets so the unique index frees up. */
+/** Rename content hashes for soft-deleted assets (keeps bin restore distinct). */
 export async function binContentHashesForAssets(assetIds: string[]) {
   if (assetIds.length === 0) return;
   const db = getWebDb();

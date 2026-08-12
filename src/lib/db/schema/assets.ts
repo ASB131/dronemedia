@@ -152,7 +152,8 @@ export const assetFiles = pgTable(
   (table) => [
     index("asset_files_asset_id_idx").on(table.assetId),
     index("asset_files_content_hash_idx").on(table.contentHash),
-    uniqueIndex("asset_files_user_content_hash_uidx").on(
+    /** Lookup index only — duplicates are allowed (onDuplicate: flag → Utilities). */
+    index("asset_files_user_content_hash_idx").on(
       table.userId,
       table.contentHash,
     ),

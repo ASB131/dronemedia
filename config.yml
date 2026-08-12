@@ -44,7 +44,7 @@ upload:
 
 deduplication:
   algorithm: xxhash # xxhash | sha256
-  onDuplicate: flag # reject | flag — flag surfaces "already exists" in UI
+  onDuplicate: flag # reject | flag — flag keeps both copies; review in Utilities → Duplicates
 
 users:
   defaultStorageQuotaBytes: 1099511627776 # 1 TB

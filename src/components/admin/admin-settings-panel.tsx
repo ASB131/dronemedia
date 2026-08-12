@@ -231,7 +231,7 @@ export function AdminSettingsPanel() {
               })
             }
           >
-            <option value="flag">Flag (keep both)</option>
+            <option value="flag">Flag (keep both → Utilities)</option>
             <option value="reject">Reject upload</option>
           </select>
         </label>
