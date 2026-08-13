@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
+import {
+  clearFalseDuplicateFlags,
+  requeueThumbnailsForUser,
+} from "@/lib/assets/duplicate-flags";
 import {
   listLargeFilesForUser,
   listLocatedAssetsForUser,
@@ -48,6 +53,35 @@ export async function GET(request: Request) {
 
     const assets = await listLargeFilesForUser(session.user.id);
     return NextResponse.json({ assets });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+const postSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("clearFalseDuplicateFlags") }),
+  z.object({
+    action: z.literal("requeueThumbnails"),
+    missingOnly: z.boolean().optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+  }),
+]);
+
+export async function POST(request: Request) {
+  try {
+    const session = await requireApprovedSession();
+    const body = postSchema.parse(await request.json());
+
+    if (body.action === "clearFalseDuplicateFlags") {
+      const result = await clearFalseDuplicateFlags(session.user.id);
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    const result = await requeueThumbnailsForUser(session.user.id, {
+      missingOnly: body.missingOnly,
+      limit: body.limit,
+    });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return jsonError(error);
   }
