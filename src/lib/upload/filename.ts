@@ -58,6 +58,29 @@ export function groupKeyForUploadFile(basename: string, extension: string): stri
   return key;
 }
 
+/** Parent folder from a relative path (`100MEDIA/DJI_0420.MP4` → `100media`). */
+export function uploadRelativeFolder(relativePath: string | null | undefined): string {
+  if (!relativePath) return "";
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const dir = path.posix.dirname(normalized);
+  if (!dir || dir === ".") return "";
+  return dir.toLowerCase();
+}
+
+/**
+ * Primary media group key: folder + basename so same DJI_0420 in different
+ * folders do not overwrite each other within a batch.
+ */
+export function primaryMediaGroupKey(params: {
+  basename: string;
+  extension: string;
+  relativePath?: string | null;
+}): string {
+  const base = groupKeyForUploadFile(params.basename, params.extension);
+  const folder = uploadRelativeFolder(params.relativePath);
+  return folder ? `${folder}::${base}` : base;
+}
+
 export function isVideoExtension(ext: string): boolean {
   return VIDEO_EXTENSIONS.has(ext.toLowerCase());
 }

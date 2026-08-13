@@ -40,6 +40,8 @@ import {
   normalizeBasename,
   pickMainDisplayName,
   pickMainExtension,
+  primaryMediaGroupKey,
+  uploadRelativeFolder,
 } from "@/lib/upload/filename";
 import {
   uploadAssembledKey,
@@ -70,7 +72,14 @@ function isSidecarOnlyGroup(extensions: string[]) {
   );
 }
 
-async function findAssetForSidecarBasename(userId: string, basename: string) {
+async function findAssetForSidecarBasename(
+  userId: string,
+  basename: string,
+): Promise<
+  | { status: "none" }
+  | { status: "unique"; asset: typeof assets.$inferSelect }
+  | { status: "ambiguous"; count: number }
+> {
   const db = getWebDb();
   const key = normalizeBasename(basename);
   const rows = await db
@@ -85,9 +94,9 @@ async function findAssetForSidecarBasename(userId: string, basename: string) {
     )
     .limit(10);
 
-  if (rows.length === 0) return null;
-  const video = rows.find((row) => row.assetType === "video");
-  return video ?? rows[0] ?? null;
+  if (rows.length === 0) return { status: "none" };
+  if (rows.length > 1) return { status: "ambiguous", count: rows.length };
+  return { status: "unique", asset: rows[0]! };
 }
 
 async function attachAssembledDjiToPanorama(params: {
@@ -815,29 +824,73 @@ export async function commitUploadBatch(batchId: string, userId: string) {
   }
 
   const groups = new Map<string, typeof nonSequenceFiles>();
+  const sidecars: typeof nonSequenceFiles = [];
+
   for (const file of nonSequenceFiles) {
-    const key = groupKeyForUploadFile(file.basename, file.extension);
+    if (isTelemetryExtension(file.extension) || isProxyExtension(file.extension)) {
+      sidecars.push(file);
+      continue;
+    }
+    const key = primaryMediaGroupKey({
+      basename: file.basename,
+      extension: file.extension,
+      relativePath: file.relativePath,
+    });
     const group = groups.get(key) ?? [];
     group.push(file);
     groups.set(key, group);
   }
 
-  for (const [basename, groupFiles] of groups) {
+  // Pair sidecars: same folder + basename first, then any primary with that basename.
+  for (const sidecar of sidecars) {
+    const base = groupKeyForUploadFile(sidecar.basename, sidecar.extension);
+    const folder = uploadRelativeFolder(sidecar.relativePath);
+    const sameFolderKey = folder ? `${folder}::${base}` : base;
+    let targetKey: string | null = groups.has(sameFolderKey) ? sameFolderKey : null;
+    if (!targetKey) {
+      for (const key of groups.keys()) {
+        if (key === base || key.endsWith(`::${base}`)) {
+          targetKey = key;
+          break;
+        }
+      }
+    }
+    if (targetKey) {
+      groups.get(targetKey)!.push(sidecar);
+    } else {
+      // Sidecar-only group keyed by basename for library attach.
+      const orphanKey = `sidecar::${base}`;
+      const group = groups.get(orphanKey) ?? [];
+      group.push(sidecar);
+      groups.set(orphanKey, group);
+    }
+  }
+
+  for (const [, groupFiles] of groups) {
+    const basename = groupKeyForUploadFile(
+      groupFiles[0]!.basename,
+      groupFiles[0]!.extension,
+    );
     try {
       const extensions = groupFiles.map((f) => f.extension);
 
       if (isSidecarOnlyGroup(extensions)) {
         const existing = await findAssetForSidecarBasename(userId, basename);
-        if (!existing) {
-          // Don't abort the rest of the batch for an orphan .srt/.lrf.
+        if (existing.status === "none") {
           warnings.push(
             `Skipped ${basename}.${extensions[0]} — no matching media in this batch or library`,
           );
           continue;
         }
+        if (existing.status === "ambiguous") {
+          warnings.push(
+            `Skipped ${basename}.${extensions[0]} — ${existing.count} library assets share that name; upload with the matching video or resolve duplicates first`,
+          );
+          continue;
+        }
         const attached = await attachSidecarFiles({
           userId,
-          assetId: existing.id,
+          assetId: existing.asset.id,
           groupFiles,
         });
         createdAssets.push(attached);
