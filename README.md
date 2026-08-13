@@ -288,9 +288,16 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
-Current release: **1.0.2**
+Current release: **1.0.3**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.3 highlights
+
+- Timeline: no visual duplicate tiles on infinite scroll; select all / unselect all in select mode
+- Upload: folder-aware grouping so same `DJI_0420` in different folders stay separate assets; safer sidecar attach when multiple matches exist
+- Dedup: “Possible duplicate” only from primary video/photo hashes (not shared SRT/LRF)
+- Thumbnails: owner check + cache-busting URLs; Utilities actions to clear false duplicate flags and requeue thumbs
 
 ### v1.0.2 highlights
 

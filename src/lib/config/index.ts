@@ -67,4 +67,4 @@ export function getRedisUrl(): string {
   return process.env.REDIS_URL ?? loadConfig().redis.url;
 }
 
-export const APP_VERSION = process.env.APP_VERSION ?? "1.0.2";
+export const APP_VERSION = process.env.APP_VERSION ?? "1.0.3";
