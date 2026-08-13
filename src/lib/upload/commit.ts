@@ -72,6 +72,30 @@ function isSidecarOnlyGroup(extensions: string[]) {
   );
 }
 
+async function sidecarHashOwnedByOtherAsset(params: {
+  userId: string;
+  contentHash: string;
+  extension: string;
+  exceptAssetId?: string;
+}): Promise<string | null> {
+  const db = getWebDb();
+  const rows = await db
+    .select({ assetId: assetFiles.assetId })
+    .from(assetFiles)
+    .innerJoin(assets, eq(assets.id, assetFiles.assetId))
+    .where(
+      and(
+        eq(assetFiles.userId, params.userId),
+        eq(assetFiles.extension, params.extension),
+        eq(assetFiles.contentHash, params.contentHash),
+        isNull(assets.deletedAt),
+      ),
+    )
+    .limit(8);
+  const other = rows.find((row) => row.assetId !== params.exceptAssetId);
+  return other?.assetId ?? null;
+}
+
 async function findAssetForSidecarBasename(
   userId: string,
   basename: string,
@@ -207,6 +231,24 @@ async function attachSidecarFiles(params: {
   let attachedLrf = false;
 
   for (const file of groupFiles) {
+    if (
+      (isTelemetryExtension(file.extension) ||
+        isProxyExtension(file.extension)) &&
+      file.contentHash
+    ) {
+      const other = await sidecarHashOwnedByOtherAsset({
+        userId,
+        contentHash: file.contentHash,
+        extension: file.extension,
+        exceptAssetId: assetId,
+      });
+      if (other) {
+        console.warn(
+          `[attachSidecarFiles] refused ${file.displayName} — hash already on asset ${other}`,
+        );
+        continue;
+      }
+    }
     const mediaKey = buildMediaAssetKey(userId, assetId, file.extension);
     const assembledKey = uploadAssembledKey(userId, file.id);
 
@@ -841,20 +883,13 @@ export async function commitUploadBatch(batchId: string, userId: string) {
     groups.set(key, group);
   }
 
-  // Pair sidecars: same folder + basename first, then any primary with that basename.
+  // Pair sidecars only with the same folder + basename. Never attach to
+  // another DJI_0419 in a different folder (or a basename-only group).
   for (const sidecar of sidecars) {
     const base = groupKeyForUploadFile(sidecar.basename, sidecar.extension);
     const folder = uploadRelativeFolder(sidecar.relativePath);
     const sameFolderKey = folder ? `${folder}::${base}` : base;
-    let targetKey: string | null = groups.has(sameFolderKey) ? sameFolderKey : null;
-    if (!targetKey) {
-      for (const key of groups.keys()) {
-        if (key === base || key.endsWith(`::${base}`)) {
-          targetKey = key;
-          break;
-        }
-      }
-    }
+    const targetKey = groups.has(sameFolderKey) ? sameFolderKey : null;
     if (targetKey) {
       groups.get(targetKey)!.push(sidecar);
     } else {
@@ -947,11 +982,33 @@ export async function commitUploadBatch(batchId: string, userId: string) {
       }
 
       const assetId = crypto.randomUUID();
+      const commitFiles: typeof groupFiles = [];
+      for (const file of groupFiles) {
+        const sidecar =
+          isTelemetryExtension(file.extension) ||
+          isProxyExtension(file.extension);
+        if (sidecar && file.contentHash) {
+          const other = await sidecarHashOwnedByOtherAsset({
+            userId,
+            contentHash: file.contentHash,
+            extension: file.extension,
+            exceptAssetId: assetId,
+          });
+          if (other) {
+            warnings.push(
+              `Skipped ${file.displayName} — identical ${file.extension} already attached to another library item`,
+            );
+            continue;
+          }
+        }
+        commitFiles.push(file);
+      }
+      if (commitFiles.length === 0) continue;
 
       let totalAssetBytes = 0;
       let primaryHash: string | null = null;
       let clientModifiedAt: Date | null = null;
-      for (const file of groupFiles) {
+      for (const file of commitFiles) {
         totalAssetBytes += file.fileSizeBytes;
         if (file.extension === mainExt) {
           primaryHash = file.contentHash ?? null;
@@ -966,15 +1023,15 @@ export async function commitUploadBatch(batchId: string, userId: string) {
         displayName,
         assetType,
         mainFileExt: mainExt,
-        hasSrt: groupFiles.some((f) => isTelemetryExtension(f.extension)),
-        hasLrf: groupFiles.some((f) => isProxyExtension(f.extension)),
+        hasSrt: commitFiles.some((f) => isTelemetryExtension(f.extension)),
+        hasLrf: commitFiles.some((f) => isProxyExtension(f.extension)),
         contentHash: primaryHash,
         fileSizeBytes: totalAssetBytes,
         // Provisional — metadata/SRT workers refine from EXIF / SRT / container tags.
         capturedAtOriginal: clientModifiedAt,
       });
 
-      for (const file of groupFiles) {
+      for (const file of commitFiles) {
         const assembledKey = uploadAssembledKey(userId, file.id);
         const mediaKey = buildMediaAssetKey(userId, assetId, file.extension);
 
@@ -1007,7 +1064,7 @@ export async function commitUploadBatch(batchId: string, userId: string) {
 
       createdAssets.push({
         assetId,
-        fileIds: groupFiles.map((f) => f.id),
+        fileIds: commitFiles.map((f) => f.id),
       });
       newMediaAssetIds.add(assetId);
     } catch (error) {

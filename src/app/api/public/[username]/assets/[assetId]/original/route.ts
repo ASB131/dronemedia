@@ -78,6 +78,7 @@ export async function GET(
     }
 
     if (asset.assetType === "video" && !playbackSource) {
+      // Cache proxy, else this asset's LRF only (path is scoped to asset.id).
       const proxyKey = videoProxyCacheKey(asset.userId, asset.id);
       if (await storage.exists(proxyKey, { tier: "cache" })) {
         key = proxyKey;

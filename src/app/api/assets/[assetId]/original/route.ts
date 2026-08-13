@@ -94,6 +94,7 @@ export async function GET(
     }
 
     if (preferProxy) {
+      // Proxy MP4 in cache, else this asset's own LRF (never another asset's files).
       const proxyKey = videoProxyCacheKey(ownerId, assetId);
       if (await storage.exists(proxyKey, { tier: "cache" })) {
         key = proxyKey;
