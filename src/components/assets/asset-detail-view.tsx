@@ -78,7 +78,7 @@ import {
 } from "@/lib/assets/panorama-viewer-mode";
 import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import { getMediaReturnPath } from "@/lib/navigation/media-return";
-import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnail-url";
 import type {
   TelemetryGeoJson,
   TelemetrySeriesPoint,

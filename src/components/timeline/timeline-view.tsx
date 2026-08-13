@@ -25,7 +25,7 @@ import type {
   TimelineSectionDto,
 } from "@/lib/assets/timeline";
 import { buildTimelineVirtualItems } from "@/lib/assets/timeline-virtual";
-import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnail-url";
 import type { AlbumSummaryDto } from "@/lib/albums/queries";
 import {
   clearTimelineScrollPosition,

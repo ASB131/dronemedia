@@ -22,7 +22,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import type { DuplicateGroupDto, LargeFileDto } from "@/lib/assets/mutations";
-import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnail-url";
 import type { JobsStatusDto, JobListItemDto } from "@/lib/jobs/status";
 import type { UploadStagingStatusDto } from "@/lib/upload/staging-status";
 import { cn } from "@/lib/utils";
