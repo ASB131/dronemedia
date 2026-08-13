@@ -9,9 +9,19 @@ import { publishJobEvent } from "@/lib/jobs/enqueue";
 import { getThumbnailsQueue } from "@/lib/jobs/queues";
 import { JOB_NAMES, type DedupJobData } from "@/lib/jobs/types";
 import { getLogger } from "@/lib/logger";
+import {
+  isPhotoExtension,
+  isProxyExtension,
+  isTelemetryExtension,
+  isVideoExtension,
+} from "@/lib/upload/filename";
 import { streamMediaFile } from "../lib/storage";
 
 const logger = getLogger().child({ worker: JOB_NAMES.DEDUP });
+
+function isPrimaryMediaExtension(ext: string) {
+  return isVideoExtension(ext) || isPhotoExtension(ext);
+}
 
 export function createDedupWorker(connection: { url: string }) {
   const config = loadConfig();
@@ -31,7 +41,7 @@ export function createDedupWorker(connection: { url: string }) {
       });
 
       const assetRows = await db
-        .select({ id: assets.id })
+        .select({ id: assets.id, description: assets.description })
         .from(assets)
         .where(eq(assets.id, assetId))
         .limit(1);
@@ -45,7 +55,17 @@ export function createDedupWorker(connection: { url: string }) {
         .from(assetFiles)
         .where(eq(assetFiles.assetId, assetId));
 
-      for (const file of files) {
+      // Only primary media (video/photo) — SRT/LRF shared across same-basename
+      // flights must not create false "Possible duplicate" flags.
+      const primaryFiles = files.filter(
+        (file) =>
+          isPrimaryMediaExtension(file.extension) &&
+          !isTelemetryExtension(file.extension) &&
+          !isProxyExtension(file.extension),
+      );
+
+      let flaggedDuplicate = false;
+      for (const file of primaryFiles) {
         const digests = new Set<string>([file.contentHash]);
 
         // Recompute both digests from media so xxhash↔sha256 switches still match.
@@ -57,7 +77,10 @@ export function createDedupWorker(connection: { url: string }) {
         }
 
         const existing = await db
-          .select({ assetId: assetFiles.assetId })
+          .select({
+            assetId: assetFiles.assetId,
+            extension: assetFiles.extension,
+          })
           .from(assetFiles)
           .innerJoin(assets, eq(assets.id, assetFiles.assetId))
           .where(
@@ -68,7 +91,10 @@ export function createDedupWorker(connection: { url: string }) {
             ),
           );
 
-        const match = existing.find((row) => row.assetId !== assetId);
+        const match = existing.find(
+          (row) =>
+            row.assetId !== assetId && isPrimaryMediaExtension(row.extension),
+        );
         if (!match) continue;
 
         logger.info(
@@ -77,6 +103,7 @@ export function createDedupWorker(connection: { url: string }) {
         );
 
         if (onDuplicate === "flag") {
+          flaggedDuplicate = true;
           await db
             .update(assets)
             .set({
@@ -85,6 +112,18 @@ export function createDedupWorker(connection: { url: string }) {
             })
             .where(eq(assets.id, assetId));
         }
+        break;
+      }
+
+      // Clear stale sidecar-based auto flags when no primary match exists.
+      if (
+        !flaggedDuplicate &&
+        assetRows[0].description?.startsWith("Possible duplicate of asset ")
+      ) {
+        await db
+          .update(assets)
+          .set({ description: null, updatedAt: new Date() })
+          .where(eq(assets.id, assetId));
       }
 
       await getThumbnailsQueue().add(
