@@ -25,6 +25,7 @@ import type {
   TimelineSectionDto,
 } from "@/lib/assets/timeline";
 import { buildTimelineVirtualItems } from "@/lib/assets/timeline-virtual";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
 import type { AlbumSummaryDto } from "@/lib/albums/queries";
 import {
   clearTimelineScrollPosition,
@@ -145,7 +146,7 @@ function AssetTile({
           ) : null}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/assets/${asset.id}/thumbnail`}
+            src={assetThumbnailSrc(asset.id, asset.updatedAt)}
             alt=""
             className={cn(
               "relative size-full object-cover transition duration-500 group-hover:brightness-75",
@@ -308,14 +309,34 @@ function mergeTimelineSections(
   current: TimelineSectionDto[],
   incoming: TimelineSectionDto[],
 ) {
-  const sections = new Map(current.map((section) => [section.key, section]));
+  const sections = new Map(
+    current.map((section) => [
+      section.key,
+      {
+        ...section,
+        assets: [...section.assets],
+      },
+    ]),
+  );
 
   for (const section of incoming) {
     const existing = sections.get(section.key);
     if (existing) {
-      existing.assets.push(...section.assets);
+      const seen = new Set(existing.assets.map((asset) => asset.id));
+      for (const asset of section.assets) {
+        if (seen.has(asset.id)) continue;
+        seen.add(asset.id);
+        existing.assets.push(asset);
+      }
+      existing.assets.sort(
+        (a, b) =>
+          new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
+      );
     } else {
-      sections.set(section.key, section);
+      sections.set(section.key, {
+        ...section,
+        assets: [...section.assets],
+      });
     }
   }
 
@@ -356,6 +377,8 @@ export function TimelineView({
   }>({ year: null, monthLabel: null });
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const inFlightCursorRef = useRef<string | null>(null);
   const [gridCols, setGridCols] = useState(5);
 
   useEffect(() => {
@@ -394,10 +417,14 @@ export function TimelineView({
 
   const loadMore = useCallback(async () => {
     const cursor = data?.nextCursor;
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadingMoreRef.current || inFlightCursorRef.current === cursor) {
+      return;
+    }
 
+    loadingMoreRef.current = true;
+    inFlightCursorRef.current = cursor;
+    setLoadingMore(true);
     try {
-      setLoadingMore(true);
       const page = await loadTimeline(cursor);
       setData((current) => {
         if (!current) return page;
@@ -410,9 +437,11 @@ export function TimelineView({
     } catch {
       setError("Failed to load timeline");
     } finally {
+      loadingMoreRef.current = false;
+      inFlightCursorRef.current = null;
       setLoadingMore(false);
     }
-  }, [data?.nextCursor, loadTimeline, loadingMore]);
+  }, [data?.nextCursor, loadTimeline]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -773,6 +802,33 @@ export function TimelineView({
           <span className="text-xs text-muted-foreground">
             {selected.size} selected
           </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || !data}
+            onClick={() => {
+              const ids = new Set<string>();
+              for (const section of data?.sections ?? []) {
+                for (const asset of section.assets) {
+                  ids.add(asset.id);
+                }
+              }
+              setSelected(ids);
+            }}
+          >
+            Select all
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || selected.size === 0}
+            onClick={() => {
+              setSelected(new Set());
+              setLastClickedId(null);
+            }}
+          >
+            Unselect all
+          </Button>
           <Button
             size="sm"
             variant="outline"

@@ -32,6 +32,7 @@ export type TimelineAssetDto = {
   aspectRatio: number;
   location: { lat: number; lng: number } | null;
   hasFlightPath: boolean;
+  updatedAt: string;
 };
 
 function aspectRatioFromMetadata(
@@ -135,6 +136,7 @@ function toTimelineAssetDto(row: {
   capturedAtOriginal: Date | null;
   capturedAtOverride: Date | null;
   createdAt: Date;
+  updatedAt: Date;
   lat: number | null;
   lng: number | null;
   hasFlightPath: boolean;
@@ -167,6 +169,7 @@ function toTimelineAssetDto(row: {
     aspectRatio: aspectRatioFromMetadata(row.mediaMetadata),
     location: hasCoords ? { lat: row.lat!, lng: row.lng! } : null,
     hasFlightPath: Boolean(row.hasFlightPath),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -204,6 +207,7 @@ const timelineAssetSelect = {
   capturedAtOriginal: assets.capturedAtOriginal,
   capturedAtOverride: assets.capturedAtOverride,
   createdAt: assets.createdAt,
+  updatedAt: assets.updatedAt,
   lat: sql<number | null>`ST_Y(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
   lng: sql<number | null>`ST_X(coalesce(${assets.locationOverride}, ${assets.locationOriginal}))`,
   hasFlightPath: sql<boolean>`${flightTelemetry.flightPath} is not null`,
@@ -219,7 +223,7 @@ async function listOnThisDayGroups(
   const month = now.getUTCMonth() + 1;
   const day = now.getUTCDate();
   const currentYear = now.getUTCFullYear();
-  const displayCapturedAt = sql`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`;
+  const displayCapturedAt = sql`date_trunc('milliseconds', coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt}))`;
 
   const conditions: SQL[] = [
     eq(assets.userId, userId),
@@ -281,7 +285,8 @@ export async function getTimelineForUser(
   const db = getWebDb();
   const limit = Math.min(Math.max(options?.limit ?? 80, 1), 100);
   const mediaType = options?.mediaType ?? "all";
-  const displayCapturedAt = sql<Date>`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`;
+  // Truncate to ms so keyset matches JS Date.toISOString() cursor precision.
+  const displayCapturedAt = sql<Date>`date_trunc('milliseconds', coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt}))`;
   const conditions: SQL[] = [
     eq(assets.userId, userId),
     isNull(assets.deletedAt),
