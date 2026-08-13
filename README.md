@@ -288,9 +288,14 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
-Current release: **1.0.3**
+Current release: **1.0.4**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.4 highlights
+
+- Upload sidecars (SRT/LRF) attach only with the same folder + basename; identical sidecar hashes are not copied onto a second video
+- CLI `npm run repair-cross-attached-sidecars -- --apply` detaches cross-attached SRT/LRF (keeps both MP4s; owner chosen by LRF duration)
 
 ### v1.0.3 highlights
 
