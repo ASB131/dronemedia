@@ -137,6 +137,48 @@ async function detachExtension(params: {
   return row.fileSizeBytes ?? 0;
 }
 
+async function stripSrtDerivedMetadata(assetId: string, flightId: string | null) {
+  const db = getWorkerDb();
+  await db.delete(telemetryPoints).where(eq(telemetryPoints.assetId, assetId));
+  await db.delete(flightTelemetry).where(eq(flightTelemetry.assetId, assetId));
+  await db
+    .delete(videoChapters)
+    .where(
+      and(eq(videoChapters.assetId, assetId), eq(videoChapters.source, "auto")),
+    );
+  await db
+    .update(assets)
+    .set({
+      hasSrt: false,
+      flightId: null,
+      locationOriginal: null,
+      capturedAtOriginal: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(assets.id, assetId));
+  if (flightId) {
+    await refreshFlightStats(db, flightId);
+    await deleteFlightIfNoAssets(db, flightId);
+  }
+}
+
+async function requeueThumbAndMetadata(params: {
+  userId: string;
+  assetId: string;
+  displayName: string;
+}) {
+  const storage = getStorageAdapter();
+  await storage
+    .delete(thumbnailCacheKey(params.userId, params.assetId), { tier: "cache" })
+    .catch(() => undefined);
+  await enqueueAssetRefresh({
+    userId: params.userId,
+    assetId: params.assetId,
+    assetName: params.displayName,
+    options: { thumbnails: true, metadata: true, dedup: false },
+  });
+}
+
 export async function planCrossAttachedSidecarRepairs(): Promise<{
   groups: SidecarRepairGroup[];
 }> {
@@ -325,33 +367,7 @@ export async function applyCrossAttachedSidecarRepairs(params?: {
           assetId: asset.id,
           extension: "srt",
         });
-        await db
-          .delete(telemetryPoints)
-          .where(eq(telemetryPoints.assetId, asset.id));
-        await db
-          .delete(flightTelemetry)
-          .where(eq(flightTelemetry.assetId, asset.id));
-        await db
-          .delete(videoChapters)
-          .where(
-            and(
-              eq(videoChapters.assetId, asset.id),
-              eq(videoChapters.source, "auto"),
-            ),
-          );
-        const oldFlightId = asset.flightId;
-        await db
-          .update(assets)
-          .set({
-            hasSrt: false,
-            flightId: null,
-            updatedAt: new Date(),
-          })
-          .where(eq(assets.id, asset.id));
-        if (oldFlightId) {
-          await refreshFlightStats(db, oldFlightId);
-          await deleteFlightIfNoAssets(db, oldFlightId);
-        }
+        await stripSrtDerivedMetadata(asset.id, asset.flightId);
         detached += 1;
       }
       if (action.detachLrf) {
@@ -445,4 +461,149 @@ export async function applyCrossAttachedSidecarRepairs(params?: {
   }
 
   return { groups, detached, thumbsQueued, srtQueued, flagsCleared };
+}
+
+const LRF_MISMATCH_SECONDS = 0.5;
+
+/**
+ * Detach LRF (and SRT) when LRF duration does not match the MP4, then clear
+ * leftover SRT GPS on videos that no longer have an SRT file.
+ */
+export async function applyLeftoverSidecarRepairs(): Promise<{
+  mismatched: Array<{
+    assetId: string;
+    displayName: string;
+    mp4Duration: number;
+    lrfDuration: number;
+  }>;
+  locationsCleared: number;
+  thumbsQueued: number;
+}> {
+  const db = getWorkerDb();
+  const storage = getStorageAdapter();
+  const videos = await db
+    .select()
+    .from(assets)
+    .where(and(isNull(assets.deletedAt), eq(assets.assetType, "video")));
+
+  const mismatched: Array<{
+    assetId: string;
+    displayName: string;
+    mp4Duration: number;
+    lrfDuration: number;
+  }> = [];
+  let thumbsQueued = 0;
+
+  for (const asset of videos) {
+    if (!asset.hasLrf) continue;
+    const mp4Path = mediaFilePath(asset.userId, asset.id, asset.mainFileExt);
+    const lrfPath = mediaFilePath(asset.userId, asset.id, "lrf");
+    const mp4Duration = await probeDurationSeconds(mp4Path);
+    const lrfDuration = await probeDurationSeconds(lrfPath);
+    if (mp4Duration == null || lrfDuration == null) continue;
+    if (Math.abs(mp4Duration - lrfDuration) <= LRF_MISMATCH_SECONDS) continue;
+
+    mismatched.push({
+      assetId: asset.id,
+      displayName: asset.displayName,
+      mp4Duration,
+      lrfDuration,
+    });
+
+    let removedBytes = 0;
+    removedBytes += await detachExtension({
+      userId: asset.userId,
+      assetId: asset.id,
+      extension: "lrf",
+    });
+    await storage
+      .delete(videoProxyCacheKey(asset.userId, asset.id), { tier: "cache" })
+      .catch(() => undefined);
+    await storage
+      .deletePrefix(videoHlsPrefix(asset.userId, asset.id), { tier: "cache" })
+      .catch(() => undefined);
+    await db
+      .update(assets)
+      .set({ hasLrf: false, updatedAt: new Date() })
+      .where(eq(assets.id, asset.id));
+    await refreshAssetPlaybackFlags(asset.userId, asset.id, { hasLrf: false });
+
+    const [srtRow] = await db
+      .select({ id: assetFiles.id })
+      .from(assetFiles)
+      .where(
+        and(eq(assetFiles.assetId, asset.id), eq(assetFiles.extension, "srt")),
+      )
+      .limit(1);
+    if (srtRow) {
+      removedBytes += await detachExtension({
+        userId: asset.userId,
+        assetId: asset.id,
+        extension: "srt",
+      });
+      await stripSrtDerivedMetadata(asset.id, asset.flightId);
+    }
+
+    if (removedBytes !== 0) {
+      await db
+        .update(assets)
+        .set({
+          fileSizeBytes: sql`greatest(0, coalesce(${assets.fileSizeBytes}, 0) - ${removedBytes})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(assets.id, asset.id));
+      await db
+        .update(users)
+        .set({
+          storageUsedBytes: sql`greatest(0, ${users.storageUsedBytes} - ${removedBytes})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, asset.userId));
+    }
+
+    await requeueThumbAndMetadata({
+      userId: asset.userId,
+      assetId: asset.id,
+      displayName: asset.displayName,
+    });
+    thumbsQueued += 1;
+  }
+
+  const leftover = await db
+    .select({
+      id: assets.id,
+      userId: assets.userId,
+      displayName: assets.displayName,
+      flightId: assets.flightId,
+    })
+    .from(assets)
+    .where(
+      and(
+        isNull(assets.deletedAt),
+        eq(assets.assetType, "video"),
+        sql`${assets.locationOriginal} is not null`,
+      ),
+    );
+
+  let locationsCleared = 0;
+  for (const row of leftover) {
+    const [srtRow] = await db
+      .select({ id: assetFiles.id })
+      .from(assetFiles)
+      .where(
+        and(eq(assetFiles.assetId, row.id), eq(assetFiles.extension, "srt")),
+      )
+      .limit(1);
+    if (srtRow) continue;
+    await stripSrtDerivedMetadata(row.id, row.flightId);
+    await requeueThumbAndMetadata({
+      userId: row.userId,
+      assetId: row.id,
+      displayName: row.displayName,
+    });
+    locationsCleared += 1;
+    thumbsQueued += 1;
+  }
+
+  return { mismatched, locationsCleared, thumbsQueued };
 }
