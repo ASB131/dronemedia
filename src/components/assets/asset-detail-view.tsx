@@ -78,6 +78,7 @@ import {
 } from "@/lib/assets/panorama-viewer-mode";
 import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import { getMediaReturnPath } from "@/lib/navigation/media-return";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
 import type {
   TelemetryGeoJson,
   TelemetrySeriesPoint,
@@ -87,7 +88,7 @@ import { cn } from "@/lib/utils";
 function prefetchAsset(id: string) {
   void fetch(`/api/assets/${id}`).catch(() => undefined);
   const img = new Image();
-  img.src = `/api/assets/${id}/thumbnail`;
+  img.src = assetThumbnailSrc(id);
 }
 
 function runWhenIdle(task: () => void) {

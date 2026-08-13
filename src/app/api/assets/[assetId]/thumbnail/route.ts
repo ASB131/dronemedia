@@ -30,7 +30,7 @@ export async function GET(
       return new Response("Thumbnail not ready", { status: 404 });
     }
 
-    const etag = `"${asset.preferredLutId ?? "none"}-${data.byteLength}"`;
+    const etag = `"${asset.preferredLutId ?? "none"}-${asset.updatedAt?.getTime?.() ?? 0}-${data.byteLength}"`;
     return new Response(new Uint8Array(data), {
       headers: {
         "Content-Type": "image/webp",

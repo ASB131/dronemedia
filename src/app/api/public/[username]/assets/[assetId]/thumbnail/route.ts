@@ -27,6 +27,7 @@ export async function GET(
       headers: {
         "Content-Type": "image/webp",
         "Cache-Control": "public, max-age=3600",
+        ETag: `"${asset.updatedAt?.getTime?.() ?? 0}-${data.byteLength}"`,
       },
     });
   } catch (error) {

@@ -22,6 +22,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import type { DuplicateGroupDto, LargeFileDto } from "@/lib/assets/mutations";
+import { assetThumbnailSrc } from "@/lib/assets/thumbnails";
 import type { JobsStatusDto, JobListItemDto } from "@/lib/jobs/status";
 import type { UploadStagingStatusDto } from "@/lib/upload/staging-status";
 import { cn } from "@/lib/utils";
@@ -113,6 +114,7 @@ export function UtilitiesView() {
   const [jobSection, setJobSection] = useState<JobSection>("active");
   const [jobsLive, setJobsLive] = useState(false);
   const [jobsRefreshing, setJobsRefreshing] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const jobsInFlight = useRef(false);
   const jobSectionTouched = useRef(false);
   const [duplicates, setDuplicates] = useState<{
@@ -585,6 +587,77 @@ export function UtilitiesView() {
                 >
                   Clear finished from list
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={recoveryBusy}
+                  title="Clears Possible duplicate descriptions that were false flags from shared SRT/LRF"
+                  onClick={() => {
+                    void (async () => {
+                      setRecoveryBusy(true);
+                      try {
+                        const response = await fetch("/api/utilities", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "clearFalseDuplicateFlags",
+                          }),
+                        });
+                        if (!response.ok) {
+                          setMessage("Failed to clear false duplicate flags");
+                          return;
+                        }
+                        const payload = (await response.json()) as {
+                          cleared?: number;
+                        };
+                        setMessage(
+                          `Cleared ${payload.cleared ?? 0} false duplicate flag${(payload.cleared ?? 0) === 1 ? "" : "s"}`,
+                        );
+                      } finally {
+                        setRecoveryBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  Clear false duplicate flags
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={recoveryBusy}
+                  title="Deletes cached thumbs and requeues thumbnail jobs (up to 200 assets)"
+                  onClick={() => {
+                    void (async () => {
+                      setRecoveryBusy(true);
+                      try {
+                        const response = await fetch("/api/utilities", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            action: "requeueThumbnails",
+                            missingOnly: false,
+                            limit: 200,
+                          }),
+                        });
+                        if (!response.ok) {
+                          setMessage("Failed to requeue thumbnails");
+                          return;
+                        }
+                        const payload = (await response.json()) as {
+                          queued?: number;
+                        };
+                        setMessage(
+                          `Queued ${payload.queued ?? 0} thumbnail job${(payload.queued ?? 0) === 1 ? "" : "s"}`,
+                        );
+                        await refreshJobs({ quiet: true });
+                      } finally {
+                        setRecoveryBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  Requeue thumbnails
+                </Button>
               </div>
             ) : null}
           </div>
@@ -765,7 +838,7 @@ export function UtilitiesView() {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={`/api/assets/${asset.id}/thumbnail`}
+                                  src={assetThumbnailSrc(asset.id)}
                                   alt=""
                                   className="size-full object-cover"
                                 />
@@ -897,7 +970,7 @@ export function UtilitiesView() {
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={`/api/assets/${asset.id}/thumbnail`}
+                          src={assetThumbnailSrc(asset.id)}
                           alt=""
                           className="size-full object-cover"
                           loading="lazy"

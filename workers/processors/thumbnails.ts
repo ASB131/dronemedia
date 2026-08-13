@@ -65,11 +65,17 @@ export function createThumbnailsWorker(connection: { url: string }) {
       if (!asset) {
         throw new Error(`Asset ${assetId} not found`);
       }
+      if (asset.userId !== userId) {
+        throw new Error(
+          `Thumbnail job userId mismatch for asset ${assetId}`,
+        );
+      }
+      const ownerId = asset.userId;
 
-      const key = thumbnailCacheKey(userId, assetId);
+      const key = thumbnailCacheKey(ownerId, assetId);
 
       if (asset.assetType === "photo") {
-        const media = await readMediaFile(userId, assetId, asset.mainFileExt);
+        const media = await readMediaFile(ownerId, assetId, asset.mainFileExt);
         if (!media) {
           throw new Error("Main media file not found on disk");
         }
@@ -91,7 +97,7 @@ export function createThumbnailsWorker(connection: { url: string }) {
           })
           .webp({ quality: config.images.webQuality })
           .toBuffer();
-        await storage.put(photoWebPreviewCacheKey(userId, assetId), preview, {
+        await storage.put(photoWebPreviewCacheKey(ownerId, assetId), preview, {
           tier: "cache",
           contentType: "image/webp",
         });
@@ -119,11 +125,11 @@ export function createThumbnailsWorker(connection: { url: string }) {
           .limit(1);
 
         if (!frame) {
-          await writePlaceholder(userId, assetId, "Sequence");
+          await writePlaceholder(ownerId, assetId, "Sequence");
         } else {
           const media = await readSequenceFrameByKey(frame.storageKey);
           if (!media) {
-            await writePlaceholder(userId, assetId, "Sequence");
+            await writePlaceholder(ownerId, assetId, "Sequence");
           } else {
             const webp = await sharp(media)
               .rotate()
@@ -152,7 +158,7 @@ export function createThumbnailsWorker(connection: { url: string }) {
           }
         }
       } else {
-        const inputPath = localMediaPath(userId, assetId, asset.mainFileExt);
+        const inputPath = localMediaPath(ownerId, assetId, asset.mainFileExt);
         let lutTempPath: string | null = null;
         let lutTempDir: string | null = null;
         try {
@@ -187,14 +193,14 @@ export function createThumbnailsWorker(connection: { url: string }) {
               { assetId, inputPath },
               "Video frame extract failed; writing placeholder",
             );
-            await writePlaceholder(userId, assetId, "Video");
+            await writePlaceholder(ownerId, assetId, "Video");
           }
         } catch (error) {
           logger.warn(
             { assetId, err: error },
             "Video thumbnail unexpected error; writing placeholder",
           );
-          await writePlaceholder(userId, assetId, "Video");
+          await writePlaceholder(ownerId, assetId, "Video");
         } finally {
           if (lutTempDir) {
             await fs
@@ -204,9 +210,14 @@ export function createThumbnailsWorker(connection: { url: string }) {
         }
       }
 
+      await db
+        .update(assets)
+        .set({ updatedAt: new Date() })
+        .where(eq(assets.id, assetId));
+
       await getMetadataQueue().add(
         "metadata",
-        { userId, assetId },
+        { userId: ownerId, assetId },
         {
           attempts: config.jobs.retry.attempts,
           backoff: {
