@@ -30,6 +30,7 @@ import { colorModeFromMediaMetadata } from "@/lib/luts/color-profile";
 import {
   AUTO_EXPAND_ZOOM,
   COLOCATED_METERS,
+  DISABLE_CLUSTERING_ZOOM,
   PATH_MIN_ZOOM,
   distanceMeters,
   layoutColocatedPositions,
@@ -383,7 +384,7 @@ export function MapView() {
         maxClusterRadius: 56,
         spiderfyOnMaxZoom: true,
         zoomToBoundsOnClick: true,
-        disableClusteringAtZoom: AUTO_EXPAND_ZOOM,
+        disableClusteringAtZoom: DISABLE_CLUSTERING_ZOOM,
         spiderfyDistanceMultiplier: 3.2,
         spiderLegPolylineOptions: {
           weight: 1.5,

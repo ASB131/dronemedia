@@ -28,6 +28,7 @@ const patchSchema = z.object({
   sequenceFps: z.number().min(1).max(120).optional(),
   preferredLutId: z.string().uuid().nullable().optional(),
   panoramaViewer: z.enum(["photo", "180", "360"]).optional(),
+  panoramaHeadingOverride: z.number().nullable().optional(),
 });
 
 export async function GET(
@@ -76,6 +77,7 @@ export async function PATCH(
       sequenceFps: body.sequenceFps,
       preferredLutId: body.preferredLutId,
       panoramaViewer: body.panoramaViewer,
+      panoramaHeadingOverride: body.panoramaHeadingOverride,
     });
 
     if (!updated) {

@@ -36,6 +36,22 @@ export function poseHeadingDegreesFromTags(
   );
 }
 
+export function effectivePanoramaPoseHeading(
+  meta:
+    | {
+        panoramaPoseHeadingDegrees?: number | null;
+        panoramaHeadingOverrideDegrees?: number | null;
+      }
+    | null
+    | undefined,
+): number | null {
+  if (!meta) return null;
+  return (
+    normalizeHeadingDegrees(meta.panoramaHeadingOverrideDegrees) ??
+    normalizeHeadingDegrees(meta.panoramaPoseHeadingDegrees)
+  );
+}
+
 /**
  * Look bearing from equirect center pose + PSV camera yaw.
  * Texture center (yaw 0) faces `poseHeadingDegrees`.

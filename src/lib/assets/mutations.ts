@@ -5,10 +5,12 @@ import { getEffectiveCaptureDate } from "@/lib/assets/capture";
 import { binContentHashesForAssets } from "@/lib/assets/content-hash-bin";
 import { videoHlsPrefix } from "@/lib/assets/hls";
 import {
+  emptyPhotoMetadata,
   withPanoramaViewerMode,
   type PanoramaViewerMode,
   type PhotoMediaMetadata,
 } from "@/lib/assets/media-metadata";
+import { normalizeHeadingDegrees } from "@/lib/assets/panorama-heading";
 import { clampSequenceFps } from "@/lib/assets/sequence-fps";
 import { photoWebPreviewCacheKey, thumbnailCacheKey } from "@/lib/assets/thumbnails";
 import {
@@ -39,31 +41,8 @@ export type AssetUpdateInput = {
   sequenceFps?: number;
   preferredLutId?: string | null;
   panoramaViewer?: PanoramaViewerMode;
+  panoramaHeadingOverride?: number | null;
 };
-
-function emptyPhotoMeta(): PhotoMediaMetadata {
-  return {
-    kind: "photo",
-    width: null,
-    height: null,
-    cameraMake: null,
-    cameraModel: null,
-    lensMake: null,
-    lensModel: null,
-    software: null,
-    fNumber: null,
-    exposureTimeSeconds: null,
-    iso: null,
-    exposureBias: null,
-    focalLengthMm: null,
-    altitudeMeters: null,
-    panoramaWidth: null,
-    panoramaHeight: null,
-    panoramaSphere: null,
-    panoramaViewer: null,
-    panoramaPoseHeadingDegrees: null,
-  };
-}
 
 export async function updateOwnedAsset(
   userId: string,
@@ -143,8 +122,35 @@ export async function updateOwnedAsset(
     const base =
       owned.mediaMetadata?.kind === "photo"
         ? owned.mediaMetadata
-        : emptyPhotoMeta();
+        : emptyPhotoMetadata();
     set.mediaMetadata = withPanoramaViewerMode(base, input.panoramaViewer);
+  }
+
+  if (input.panoramaHeadingOverride !== undefined) {
+    const canSetHeading =
+      owned.assetType === "photo" ||
+      (owned.assetType === "sequence" && owned.sequenceKind === "panorama");
+    if (!canSetHeading) return null;
+    const fromSet =
+      (set.mediaMetadata as PhotoMediaMetadata | undefined)?.kind === "photo"
+        ? (set.mediaMetadata as PhotoMediaMetadata)
+        : null;
+    const base =
+      fromSet ??
+      (owned.mediaMetadata?.kind === "photo"
+        ? owned.mediaMetadata
+        : emptyPhotoMetadata());
+    const nextHeading =
+      input.panoramaHeadingOverride === null
+        ? null
+        : normalizeHeadingDegrees(input.panoramaHeadingOverride);
+    if (input.panoramaHeadingOverride !== null && nextHeading == null) {
+      return null;
+    }
+    set.mediaMetadata = {
+      ...base,
+      panoramaHeadingOverrideDegrees: nextHeading,
+    };
   }
 
   const previousDroneId = owned.droneId;

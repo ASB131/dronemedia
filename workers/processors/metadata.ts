@@ -12,6 +12,7 @@ import {
   panoramaHasDjiStitch,
 } from "@/lib/assets/panorama-dji";
 import {
+  emptyPhotoMetadata,
   mergePhotoMetadata,
   mergeVideoMetadata,
   photoMetadataFromExif,
@@ -51,27 +52,7 @@ import { localMediaPath, localSequenceFramePath } from "../lib/media-path";
 import { readMediaFile, readSequenceFrameByKey } from "../lib/storage";
 
 function emptyPhotoMeta(): PhotoMediaMetadata {
-  return {
-    kind: "photo",
-    width: null,
-    height: null,
-    cameraMake: null,
-    cameraModel: null,
-    lensMake: null,
-    lensModel: null,
-    software: null,
-    fNumber: null,
-    exposureTimeSeconds: null,
-    iso: null,
-    exposureBias: null,
-    focalLengthMm: null,
-    altitudeMeters: null,
-    panoramaWidth: null,
-    panoramaHeight: null,
-    panoramaSphere: null,
-    panoramaViewer: null,
-    panoramaPoseHeadingDegrees: null,
-  };
+  return emptyPhotoMetadata();
 }
 
 function applyExifToolPhoto(

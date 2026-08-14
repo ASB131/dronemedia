@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 
 import {
+  emptyPhotoMetadata,
   mergePhotoMetadata,
   withAutoPanoramaViewer,
   type PhotoMediaMetadata,
@@ -38,27 +39,7 @@ import { localMediaPath } from "../lib/media-path";
 const logger = getLogger().child({ worker: JOB_NAMES.PANORAMA_STITCH });
 
 function emptyPhotoMeta(): PhotoMediaMetadata {
-  return {
-    kind: "photo",
-    width: null,
-    height: null,
-    cameraMake: null,
-    cameraModel: null,
-    lensMake: null,
-    lensModel: null,
-    software: null,
-    fNumber: null,
-    exposureTimeSeconds: null,
-    iso: null,
-    exposureBias: null,
-    focalLengthMm: null,
-    altitudeMeters: null,
-    panoramaWidth: null,
-    panoramaHeight: null,
-    panoramaSphere: null,
-    panoramaViewer: null,
-    panoramaPoseHeadingDegrees: null,
-  };
+  return emptyPhotoMetadata();
 }
 
 function isSphereAspect(width: number, height: number): boolean {

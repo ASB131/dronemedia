@@ -31,6 +31,11 @@ export type PhotoMediaMetadata = {
    * known from GPano/DJI tags. Null when unavailable — never invent.
    */
   panoramaPoseHeadingDegrees: number | null;
+  /**
+   * User-calibrated heading of the equirect center. Wins over EXIF pose.
+   * Metadata jobs must not overwrite this field.
+   */
+  panoramaHeadingOverrideDegrees: number | null;
 };
 
 export type VideoMediaMetadata = {
@@ -170,7 +175,12 @@ export function photoMetadataFromExif(
     panoramaSphere: null,
     panoramaViewer: null,
     panoramaPoseHeadingDegrees: null,
+    panoramaHeadingOverrideDegrees: null,
   };
+}
+
+export function emptyPhotoMetadata(): PhotoMediaMetadata {
+  return photoMetadataFromExif(null);
 }
 
 /** Prefer non-null fields from `primary`, fill gaps from `fallback`. */
@@ -202,6 +212,10 @@ export function mergePhotoMetadata(
     panoramaPoseHeadingDegrees:
       primary.panoramaPoseHeadingDegrees ??
       fallback.panoramaPoseHeadingDegrees ??
+      null,
+    panoramaHeadingOverrideDegrees:
+      primary.panoramaHeadingOverrideDegrees ??
+      fallback.panoramaHeadingOverrideDegrees ??
       null,
   };
 }

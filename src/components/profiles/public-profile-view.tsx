@@ -52,6 +52,7 @@ import {
   formatFNumber,
   formatFrameRate,
 } from "@/lib/assets/media-metadata";
+import { effectivePanoramaPoseHeading } from "@/lib/assets/panorama-heading";
 import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import type {
   TelemetryGeoJson,
@@ -622,7 +623,7 @@ export function PublicProfileView({ username }: { username: string }) {
                 src={panoUrl(username, preview.id)}
                 poseHeadingDegrees={
                   preview.mediaMetadata?.kind === "photo"
-                    ? preview.mediaMetadata.panoramaPoseHeadingDegrees
+                    ? effectivePanoramaPoseHeading(preview.mediaMetadata)
                     : null
                 }
                 onLookHeadingChange={setLookHeadingDegrees}
@@ -919,7 +920,7 @@ export function PublicProfileView({ username }: { username: string }) {
                     headingDegrees={
                       lookHeadingDegrees ??
                       (preview.mediaMetadata?.kind === "photo"
-                        ? preview.mediaMetadata.panoramaPoseHeadingDegrees
+                        ? effectivePanoramaPoseHeading(preview.mediaMetadata)
                         : null)
                     }
                     markerKind={

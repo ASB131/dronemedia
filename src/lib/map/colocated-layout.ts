@@ -4,6 +4,12 @@ export const COLOCATED_METERS = 20;
 /** At this zoom and above, co-located markers fan out automatically. */
 export const AUTO_EXPAND_ZOOM = 15;
 
+/** Keep clustering until this zoom so nearby flights stay clickable. */
+export const DISABLE_CLUSTERING_ZOOM = 18;
+
+/** Screen-space overlap (map marker is 48px). */
+export const PIXEL_COLLISION_PX = 44;
+
 /** Flight paths only render at this zoom and closer (performance). */
 export const PATH_MIN_ZOOM = 15;
 
@@ -44,6 +50,59 @@ export function groupColocatedAssets<T extends { lat: number; lng: number }>(
   return groups;
 }
 
+function groupByMetersOrPixels<T extends { lat: number; lng: number }>(
+  assets: T[],
+  options: {
+    meters: number;
+    pixelRadius: number;
+    project: (latLng: { lat: number; lng: number }) => { x: number; y: number };
+  },
+): T[][] {
+  const n = assets.length;
+  if (n === 0) return [];
+  const parent = assets.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]!]!;
+      i = parent[i]!;
+    }
+    return i;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+
+  const projected = assets.map((asset) => options.project(asset));
+  const px2 = options.pixelRadius * options.pixelRadius;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = assets[i]!;
+      const b = assets[j]!;
+      if (distanceMeters(a, b) <= options.meters) {
+        union(i, j);
+        continue;
+      }
+      const dx = projected[i]!.x - projected[j]!.x;
+      const dy = projected[i]!.y - projected[j]!.y;
+      if (dx * dx + dy * dy <= px2) {
+        union(i, j);
+      }
+    }
+  }
+
+  const buckets = new Map<number, T[]>();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    const list = buckets.get(root);
+    if (list) list.push(assets[i]!);
+    else buckets.set(root, [assets[i]!]);
+  }
+  return [...buckets.values()];
+}
+
 type LatLngLike = { lat: number; lng: number };
 
 /**
@@ -68,7 +127,13 @@ export function layoutColocatedPositions<
     return out;
   }
 
-  for (const group of groupColocatedAssets(assets)) {
+  const groups = groupByMetersOrPixels(assets, {
+    meters: COLOCATED_METERS,
+    pixelRadius: PIXEL_COLLISION_PX,
+    project: options.project,
+  });
+
+  for (const group of groups) {
     if (group.length === 1) {
       const only = group[0]!;
       out.set(only.id, { lat: only.lat, lng: only.lng });

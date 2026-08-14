@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { readExifToolTags } from "@/lib/assets/exiftool";
 import {
+  emptyPhotoMetadata,
   mergePhotoMetadata,
   type MediaMetadata,
   type PhotoMediaMetadata,
@@ -16,27 +17,7 @@ import { assets } from "@/lib/db/schema";
 import { buildMediaAssetKey, getStorageAdapter } from "@/lib/storage";
 
 function emptyPhotoMeta(): PhotoMediaMetadata {
-  return {
-    kind: "photo",
-    width: null,
-    height: null,
-    cameraMake: null,
-    cameraModel: null,
-    lensMake: null,
-    lensModel: null,
-    software: null,
-    fNumber: null,
-    exposureTimeSeconds: null,
-    iso: null,
-    exposureBias: null,
-    focalLengthMm: null,
-    altitudeMeters: null,
-    panoramaWidth: null,
-    panoramaHeight: null,
-    panoramaSphere: null,
-    panoramaViewer: null,
-    panoramaPoseHeadingDegrees: null,
-  };
+  return emptyPhotoMetadata();
 }
 
 function asNumber(value: unknown): number | null {
@@ -168,6 +149,11 @@ export async function ensurePanoramaPoseHeading(
     if (heading != null) {
       next.panoramaPoseHeadingDegrees = heading;
     }
+    next.panoramaHeadingOverrideDegrees =
+      fromDb?.panoramaHeadingOverrideDegrees ??
+      fromArg?.panoramaHeadingOverrideDegrees ??
+      base.panoramaHeadingOverrideDegrees ??
+      null;
     // Keep panorama canvas size in sync with the stitch when repairing.
     if (next.panoramaWidth == null && width != null) {
       next.panoramaWidth = width;

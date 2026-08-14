@@ -46,6 +46,13 @@ const PanoramaViewer = dynamic(
     import("@/components/assets/panorama-viewer").then((m) => m.PanoramaViewer),
   { ssr: false },
 );
+const SetLocationModal = dynamic(
+  () =>
+    import("@/components/assets/set-location-modal").then(
+      (m) => m.SetLocationModal,
+    ),
+  { ssr: false },
+);
 import { usePlaybackPreferences } from "@/hooks/use-playback-preferences";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +83,7 @@ import {
   effectivePanoramaViewer,
   isEquirectViewerMode,
 } from "@/lib/assets/panorama-viewer-mode";
+import { effectivePanoramaPoseHeading } from "@/lib/assets/panorama-heading";
 import { PANORAMA_WEB_CACHE_VERSION } from "@/lib/assets/panorama-web-version";
 import { getMediaReturnPath } from "@/lib/navigation/media-return";
 import { assetThumbnailSrc } from "@/lib/assets/thumbnail-url";
@@ -262,6 +270,10 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const [lookHeadingDegrees, setLookHeadingDegrees] = useState<number | null>(
     null,
   );
+  const panoYawDegreesRef = useRef<(() => number | null) | null>(null);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [directionCalibrating, setDirectionCalibrating] = useState(false);
   const [allowInAppSource, setAllowInAppSource] = useState(true);
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [refreshOpts, setRefreshOpts] = useState({
@@ -275,6 +287,8 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
 
   useEffect(() => {
     setLookHeadingDegrees(null);
+    setDirectionCalibrating(false);
+    setLocationModalOpen(false);
   }, [assetId]);
 
   useEffect(() => {
@@ -898,10 +912,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               src={panoUrl}
               poseHeadingDegrees={
                 asset.mediaMetadata?.kind === "photo"
-                  ? asset.mediaMetadata.panoramaPoseHeadingDegrees
+                  ? effectivePanoramaPoseHeading(asset.mediaMetadata)
                   : null
               }
               onLookHeadingChange={setLookHeadingDegrees}
+              yawDegreesRef={panoYawDegreesRef}
               className="absolute inset-0 size-full"
             />
           ) : viewerMode === "photo" && isPanorama && playbackReady ? (
@@ -959,6 +974,44 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               </p>
             </div>
           )}
+
+          {directionCalibrating ? (
+            <div className="absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
+              <div className="flex max-w-lg flex-col gap-2 rounded-xl border border-white/15 bg-black/75 px-4 py-3 text-white shadow-lg backdrop-blur">
+                <p className="text-sm font-medium">Point this view north</p>
+                <p className="text-xs text-white/70">
+                  Pan the panorama until you are looking due north, then click
+                  Done.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20"
+                    onClick={() => setDirectionCalibrating(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const yaw = panoYawDegreesRef.current?.() ?? null;
+                      if (yaw == null) {
+                        setEditMessage(
+                          "Open the 360 panorama, then try Reset direction again",
+                        );
+                        return;
+                      }
+                      setDirectionCalibrating(false);
+                      void patch({ panoramaHeadingOverride: yaw });
+                    }}
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {neighbors?.next ? (
             <button
@@ -1547,6 +1600,22 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                     Set time
                   </Button>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setLocationModalOpen(true)}
+                >
+                  {asset.location ? "Change location" : "Set location"}
+                </Button>
+                {canToggleViewer && viewerMode === "360" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDirectionCalibrating(true)}
+                  >
+                    Reset direction
+                  </Button>
+                ) : null}
                 <textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
@@ -1728,7 +1797,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                   headingDegrees={
                     lookHeadingDegrees ??
                     (asset.mediaMetadata?.kind === "photo"
-                      ? asset.mediaMetadata.panoramaPoseHeadingDegrees
+                      ? effectivePanoramaPoseHeading(asset.mediaMetadata)
                       : null)
                   }
                   markerKind={asset.assetType === "photo" ? "photo" : "drone"}
@@ -1760,6 +1829,29 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
           </div>
         </aside>
       </div>
+
+      <SetLocationModal
+        open={locationModalOpen}
+        initial={asset.location}
+        saving={locationSaving}
+        onClose={() => setLocationModalOpen(false)}
+        onSave={(point) => {
+          void (async () => {
+            setLocationSaving(true);
+            await patch({ locationOverride: point });
+            setLocationSaving(false);
+            setLocationModalOpen(false);
+          })();
+        }}
+        onClear={() => {
+          void (async () => {
+            setLocationSaving(true);
+            await patch({ locationOverride: null });
+            setLocationSaving(false);
+            setLocationModalOpen(false);
+          })();
+        }}
+      />
 
       <AddToFlightModal
         open={flightModalOpen}

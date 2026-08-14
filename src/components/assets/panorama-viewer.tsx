@@ -152,6 +152,7 @@ export function PanoramaViewer({
   src,
   poseHeadingDegrees = null,
   onLookHeadingChange,
+  yawDegreesRef,
   className,
 }: {
   /** Cache web preview of the large pano. */
@@ -160,6 +161,8 @@ export function PanoramaViewer({
   poseHeadingDegrees?: number | null;
   /** Live look heading while the user pans (same value as the compass tape). */
   onLookHeadingChange?: (headingDegrees: number | null) => void;
+  /** Current Photo Sphere Viewer yaw in degrees (for north calibration). */
+  yawDegreesRef?: { current: (() => number | null) | null };
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +180,17 @@ export function PanoramaViewer({
 
   poseRef.current = poseHeadingDegrees;
   onLookHeadingChangeRef.current = onLookHeadingChange;
+  if (yawDegreesRef) {
+    yawDegreesRef.current = () => {
+      const viewer = viewerRef.current;
+      if (!viewer) return null;
+      try {
+        return (viewer.getPosition().yaw * 180) / Math.PI;
+      } catch {
+        return null;
+      }
+    };
+  }
 
   const emitLookHeading = (next: number | null, force = false) => {
     const notify = onLookHeadingChangeRef.current;
@@ -289,9 +303,10 @@ export function PanoramaViewer({
         objectUrlRef.current = null;
       }
       onLookHeadingChangeRef.current?.(null);
+      if (yawDegreesRef) yawDegreesRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync helpers use refs
-  }, [src, poseHeadingDegrees]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recreate only when src changes
+  }, [src]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
