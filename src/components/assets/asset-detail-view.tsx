@@ -933,14 +933,27 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             playbackReady ? (
             <VideoPlayer
               src={mediaUrl}
-              hlsSrc={hlsUrl}
+              hlsSrc={
+                playbackPrefs.previewQualitiesDisabled ? null : hlsUrl
+              }
               sourceSrc={videoSourceUrl}
               defaultResolution={
-                allowInAppSource
-                  ? playbackPrefs.defaultPlaybackResolution
-                  : playbackPrefs.defaultPlaybackResolution === "source"
-                    ? "1080"
-                    : playbackPrefs.defaultPlaybackResolution
+                playbackPrefs.previewQualitiesDisabled && allowInAppSource
+                  ? "source"
+                  : allowInAppSource
+                    ? playbackPrefs.defaultPlaybackResolution
+                    : playbackPrefs.defaultPlaybackResolution === "source"
+                      ? ((playbackPrefs.enabledPreviewHeights[
+                          playbackPrefs.enabledPreviewHeights.length - 1
+                        ]?.toString() ?? "1080") as
+                          | "720"
+                          | "1080"
+                          | "1440")
+                      : playbackPrefs.defaultPlaybackResolution
+              }
+              enabledHeights={playbackPrefs.enabledPreviewHeights}
+              previewQualitiesDisabled={
+                playbackPrefs.previewQualitiesDisabled && !allowInAppSource
               }
               lutId={effectiveLutId}
               scrubberMarkers={scrubberMarkers}
@@ -1696,6 +1709,52 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                   <p className="text-xs text-muted-foreground">
                     Re-queues processing jobs. Does not re-upload originals.
                   </p>
+                  {!isPanorama &&
+                  (asset.assetType === "video" ||
+                    asset.assetType === "sequence") &&
+                  (asset.hlsHeightsMissing?.length ?? 0) > 0 ? (
+                    <div className="space-y-1.5 rounded-md border border-border/60 bg-background/60 px-2.5 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        Missing streaming preview
+                        {asset.hlsHeightsMissing.length === 1 ? "" : "s"}:{" "}
+                        {asset.hlsHeightsMissing.join(", ")}p
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={refreshBusy}
+                        onClick={() => {
+                          void (async () => {
+                            setRefreshBusy(true);
+                            setEditMessage(null);
+                            try {
+                              const response = await fetch(
+                                `/api/assets/${assetId}/generate-preview`,
+                                { method: "POST" },
+                              );
+                              if (!response.ok) {
+                                const payload = (await response.json().catch(
+                                  () => null,
+                                )) as { error?: string } | null;
+                                setEditMessage(
+                                  payload?.error ??
+                                    "Could not queue preview generation",
+                                );
+                                return;
+                              }
+                              setEditMessage(
+                                "Streaming preview queued — this page will update when ready",
+                              );
+                            } finally {
+                              setRefreshBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Generate streaming preview
+                      </Button>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {(
                       [

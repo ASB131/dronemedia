@@ -653,6 +653,10 @@ export function PublicProfileView({ username }: { username: string }) {
                       ? "1080"
                       : playbackPrefs.defaultPlaybackResolution
                 }
+                enabledHeights={playbackPrefs.enabledPreviewHeights}
+                previewQualitiesDisabled={
+                  playbackPrefs.previewQualitiesDisabled && !allowInAppSource
+                }
                 lutId={previewLutId}
                 onTimeUpdate={(time) => setPreviewTime(time)}
                 className="absolute inset-0 size-full object-contain"

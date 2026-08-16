@@ -11,11 +11,15 @@ import {
 export type PlaybackPreferences = {
   defaultPlaybackResolution: PlaybackResolution;
   previewLutId: string | null;
+  enabledPreviewHeights: number[];
+  previewQualitiesDisabled: boolean;
 };
 
 const defaults: PlaybackPreferences = {
   defaultPlaybackResolution: DEFAULT_PLAYBACK_RESOLUTION,
   previewLutId: null,
+  enabledPreviewHeights: [1080, 1440],
+  previewQualitiesDisabled: false,
 };
 
 /**
@@ -33,6 +37,8 @@ export function usePlaybackPreferences() {
         const response = await fetch("/api/account");
         if (!response.ok) return;
         const payload = (await response.json()) as {
+          enabledPreviewHeights?: number[];
+          previewQualitiesDisabled?: boolean;
           preferences?: {
             defaultPlaybackResolution?: string;
             previewLutId?: string | null;
@@ -45,6 +51,8 @@ export function usePlaybackPreferences() {
             ? resolution
             : DEFAULT_PLAYBACK_RESOLUTION,
           previewLutId: payload.preferences?.previewLutId ?? null,
+          enabledPreviewHeights: payload.enabledPreviewHeights ?? [1080, 1440],
+          previewQualitiesDisabled: Boolean(payload.previewQualitiesDisabled),
         });
       } finally {
         if (!cancelled) setReady(true);

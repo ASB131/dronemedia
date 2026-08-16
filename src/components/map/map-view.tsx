@@ -811,6 +811,11 @@ export function MapView() {
                               ? "1080"
                               : playbackPrefs.defaultPlaybackResolution
                         }
+                        enabledHeights={playbackPrefs.enabledPreviewHeights}
+                        previewQualitiesDisabled={
+                          playbackPrefs.previewQualitiesDisabled &&
+                          !allowInAppSource
+                        }
                         lutId={
                           colorModeFromMediaMetadata(preview.mediaMetadata)
                             ? preview.preferredLutId

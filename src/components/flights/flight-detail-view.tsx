@@ -468,6 +468,10 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
                     ? "1080"
                     : playbackPrefs.defaultPlaybackResolution
               }
+              enabledHeights={playbackPrefs.enabledPreviewHeights}
+              previewQualitiesDisabled={
+                playbackPrefs.previewQualitiesDisabled && !allowInAppSource
+              }
               lutId={
                 colorModeFromMediaMetadata(selectedDetail.mediaMetadata)
                   ? selectedDetail.preferredLutId

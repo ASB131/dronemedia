@@ -44,6 +44,7 @@ export const users = pgTable(
         notificationsEnabled?: boolean;
         /** Default in-player quality: HLS height or camera original ("source"). */
         defaultPlaybackResolution?:
+          | "720"
           | "1080"
           | "1440"
           | "source";

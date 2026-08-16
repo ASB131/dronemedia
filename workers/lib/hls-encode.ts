@@ -32,20 +32,21 @@ async function probeVideoSize(
 }
 
 function buildLadder(
-  maxHeight: number,
   sourceHeight: number,
   preferredHeights: number[],
 ): number[] {
-  const cappedTop = Math.min(sourceHeight, maxHeight);
-  const base =
-    preferredHeights.length > 0
-      ? preferredHeights
-      : [1080, 1440, maxHeight, cappedTop];
-  const ladder = [...new Set(base)]
-    .filter((height) => height > 0 && height <= cappedTop)
+  // Configured preview heights only; never invent rungs when admin disabled all.
+  if (preferredHeights.length === 0) return [];
+  const ladder = [...new Set(preferredHeights)]
+    .filter((height) => height > 0 && height <= sourceHeight)
     .sort((a, b) => a - b);
-  // Always keep at least one rung at or below source.
-  if (ladder.length === 0 && cappedTop > 0) return [cappedTop];
+  // Source shorter than every enabled rung → encode at source height once.
+  if (ladder.length === 0 && sourceHeight > 0) {
+    const nearest = [...preferredHeights]
+      .filter((h) => h > 0)
+      .sort((a, b) => a - b)[0];
+    if (nearest != null) return [Math.min(sourceHeight, nearest)];
+  }
   return ladder;
 }
 
@@ -69,13 +70,14 @@ export async function encodeHlsPackage(
 
   const source = await probeVideoSize(inputPath);
   const sourceHeight = source?.height ?? maxHeight;
-  const ladder = buildLadder(
-    maxHeight,
-    sourceHeight,
-    config.transcoding.hls.heights ?? [1080, 1440],
-  );
+  const preferred = config.transcoding.hls.heights ?? [];
+  const ladder = buildLadder(sourceHeight, preferred);
 
   await fs.mkdir(outputDir, { recursive: true });
+
+  if (ladder.length === 0) {
+    return { playlistPath: "", files: [] };
+  }
 
   // Version marker so workers can invalidate older LRF-based packages.
   const masterLines = [

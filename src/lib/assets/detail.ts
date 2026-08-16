@@ -97,6 +97,10 @@ export type AssetDetailDto = {
   flightTitle: string | null;
   preferredLutId: string | null;
   preferredLutName: string | null;
+  /** ABR rung folders present in the HLS package (e.g. 720, 1080). */
+  hlsHeightsPresent: number[];
+  /** Admin-enabled heights missing from this asset's HLS package. */
+  hlsHeightsMissing: number[];
 };
 
 export async function getAssetDetailForUser(
@@ -199,6 +203,8 @@ export async function getAssetDetailForUser(
   let hasProxy = asset.hasProxy || asset.hasLrf;
   let hasFullResExport = false;
   let hasPanoPreview = false;
+  let hlsHeightsPresent: number[] = [];
+  let hlsHeightsMissing: number[] = [];
   if (asset.assetType === "video" || asset.assetType === "sequence") {
     const storage = getStorageAdapter();
     if (asset.sequenceKind === "panorama") {
@@ -208,8 +214,17 @@ export async function getAssetDetailForUser(
       );
     } else {
       // Prefer live cache presence over stale DB flags (flags can lag after migrate).
-      const { videoHlsPlaylistKey } = await import("./hls");
+      const { videoHlsPlaylistKey, videoHlsVariantPrefix } = await import(
+        "./hls"
+      );
       const { videoProxyCacheKey } = await import("./transcoding");
+      const { loadConfig } = await import("@/lib/config");
+      const { normalizeHlsPreviewHeights } = await import(
+        "@/lib/playback/resolution"
+      );
+      const { parseHlsMasterHeights } = await import(
+        "@/lib/admin/hls-preview-cleanup"
+      );
       const [hlsExists, proxyExists] = await Promise.all([
         storage.exists(videoHlsPlaylistKey(asset.ownerUserId, assetId), {
           tier: "cache",
@@ -224,6 +239,36 @@ export async function getAssetDetailForUser(
         const { setAssetPlaybackFlags } = await import("./playback-flags");
         void setAssetPlaybackFlags(assetId, { hasHls, hasProxy });
       }
+      const enabled = normalizeHlsPreviewHeights(
+        loadConfig().transcoding.hls.heights,
+      );
+      if (hlsExists) {
+        const raw = await storage.get(
+          videoHlsPlaylistKey(asset.ownerUserId, assetId),
+          { tier: "cache" },
+        );
+        if (raw) {
+          hlsHeightsPresent = parseHlsMasterHeights(
+            Buffer.from(raw).toString("utf8"),
+          );
+        }
+        // Also trust on-disk variant folders if master is incomplete.
+        const fromDisk: number[] = [];
+        for (const height of enabled) {
+          const exists = await storage.exists(
+            `${videoHlsVariantPrefix(asset.ownerUserId, assetId, height)}/index.m3u8`,
+            { tier: "cache" },
+          );
+          if (exists) fromDisk.push(height);
+        }
+        if (fromDisk.length > 0) {
+          hlsHeightsPresent = [
+            ...new Set([...hlsHeightsPresent, ...fromDisk]),
+          ].sort((a, b) => a - b);
+        }
+      }
+      const presentSet = new Set(hlsHeightsPresent);
+      hlsHeightsMissing = enabled.filter((height) => !presentSet.has(height));
       if (asset.assetType === "sequence") {
         hasFullResExport = await storage.exists(
           sequenceFullResExportKey(asset.ownerUserId, assetId),
@@ -303,6 +348,8 @@ export async function getAssetDetailForUser(
     flightTitle: asset.flightTitle ?? null,
     preferredLutId: asset.preferredLutId ?? null,
     preferredLutName: asset.preferredLutName ?? null,
+    hlsHeightsPresent,
+    hlsHeightsMissing,
     telemetry: telemetry
       ? {
           parseStatus: telemetry.parseStatus,

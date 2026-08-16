@@ -104,7 +104,7 @@ const patchSchema = z.object({
         .object({
           segmentDurationSeconds: z.number().int().positive().optional(),
           playlistType: z.enum(["vod", "event"]).optional(),
-          heights: z.array(z.number().int().positive()).min(1).optional(),
+          heights: z.array(z.number().int().positive()).optional(),
         })
         .optional(),
       sequences: z

@@ -5,8 +5,8 @@ import { getUserStorage, jsonError, requireApprovedSession } from "@/lib/api/aut
 import { findUserById } from "@/lib/auth/users";
 import { loadConfig } from "@/lib/config";
 import {
-  DEFAULT_PLAYBACK_RESOLUTION,
-  isPlaybackResolution,
+  coercePlaybackResolution,
+  normalizeHlsPreviewHeights,
 } from "@/lib/playback/resolution";
 import {
   resolveAllowInAppSource,
@@ -39,20 +39,42 @@ export async function GET() {
     }
 
     const config = loadConfig();
-    const storedResolution = user.preferences?.defaultPlaybackResolution;
+    const enabledHeights = normalizeHlsPreviewHeights(
+      config.transcoding.hls.heights,
+    );
     const allowInAppSource = resolveAllowInAppSource({
       role: user.role,
       userPreference: user.preferences?.allowInAppSource ?? null,
       globalAllow: config.playback?.allowInAppSource ?? true,
     });
+    const storedResolution = user.preferences?.defaultPlaybackResolution;
+    const coercedResolution = coercePlaybackResolution(
+      storedResolution,
+      enabledHeights,
+      allowInAppSource,
+    );
+    if (storedResolution !== coercedResolution) {
+      const { getWebDb } = await import("@/lib/db");
+      const { users } = await import("@/lib/db/schema");
+      const { eq } = await import("drizzle-orm");
+      const db = getWebDb();
+      await db
+        .update(users)
+        .set({
+          preferences: {
+            ...user.preferences,
+            defaultPlaybackResolution: coercedResolution,
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id));
+    }
     const preferences = {
       theme: user.preferences?.theme ?? config.theme.default,
       downloadOriginalDefault: user.preferences?.downloadOriginalDefault ?? false,
       zipMultiSelectDefault: user.preferences?.zipMultiSelectDefault ?? true,
       notificationsEnabled: user.preferences?.notificationsEnabled ?? true,
-      defaultPlaybackResolution: isPlaybackResolution(storedResolution)
-        ? storedResolution
-        : DEFAULT_PLAYBACK_RESOLUTION,
+      defaultPlaybackResolution: coercedResolution,
       previewLutId: user.preferences?.previewLutId ?? null,
       defaultDLogLutId: user.preferences?.defaultDLogLutId ?? null,
       defaultDLogMLutId: user.preferences?.defaultDLogMLutId ?? null,
@@ -65,6 +87,8 @@ export async function GET() {
       diskUsedBytes: disk?.diskUsedBytes ?? null,
       diskTotalBytes: disk?.diskTotalBytes ?? null,
       allowInAppSource,
+      enabledPreviewHeights: enabledHeights,
+      previewQualitiesDisabled: enabledHeights.length === 0,
       username: user.username,
       email: user.email,
       role: user.role,

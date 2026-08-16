@@ -28,8 +28,6 @@ type QualityLevel = {
 /** Auto, Source (original file), or an HLS level index. */
 type QualitySelection = "auto" | "source" | number;
 
-const QUALITY_HEIGHTS = [1080, 1440] as const;
-
 function formatClock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const total = Math.floor(seconds);
@@ -61,6 +59,8 @@ export function VideoPlayer({
   hlsSrc,
   sourceSrc,
   defaultResolution = DEFAULT_PLAYBACK_RESOLUTION,
+  enabledHeights,
+  previewQualitiesDisabled = false,
   lutId,
   scrubberMarkers,
   className,
@@ -72,6 +72,10 @@ export function VideoPlayer({
   /** Progressive original (camera file) for explicit Source quality. */
   sourceSrc?: string | null;
   defaultResolution?: PlaybackResolution;
+  /** Admin-enabled preview heights; when set, quality menu is filtered. */
+  enabledHeights?: number[] | null;
+  /** When true and Source is unavailable, show a contact-admin message. */
+  previewQualitiesDisabled?: boolean;
   /** When set, grade frames through this LUT via WebGL (preview only). */
   lutId?: string | null;
   /** Timeline markers (max altitude, etc.) — not a chapters menu. */
@@ -354,6 +358,17 @@ export function VideoPlayer({
   const showQualityMenu = Boolean(hlsSrc) || Boolean(sourceSrc);
   const activeHeight = heightForSelection(selection, levels);
   const useLut = Boolean(lutId) && gradingActive && !lutFallback;
+  const menuHeights = useMemo(() => {
+    const fromLevels = levels
+      .map((level) => level.height)
+      .filter((height) => height > 0);
+    const unique = [...new Set(fromLevels)].sort((a, b) => a - b);
+    if (enabledHeights == null) return unique;
+    const allowed = new Set(enabledHeights);
+    return unique.filter((height) => allowed.has(height));
+  }, [levels, enabledHeights]);
+  const showPreviewDisabledBanner =
+    previewQualitiesDisabled && !sourceSrc && !hlsSrc;
 
   const markers = useMemo(() => {
     if (!scrubberMarkers?.length || duration <= 0) return [];
@@ -479,7 +494,7 @@ export function VideoPlayer({
                           >
                             Auto
                           </button>
-                          {QUALITY_HEIGHTS.map((height) => (
+                          {menuHeights.map((height) => (
                             <button
                               key={height}
                               type="button"
@@ -516,6 +531,13 @@ export function VideoPlayer({
       }
     >
       <div className="relative flex size-full max-h-full max-w-full items-center justify-center">
+        {showPreviewDisabledBanner ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 px-6 text-center">
+            <p className="max-w-sm text-sm text-white/90">
+              All media preview types are disabled. Contact an administrator.
+            </p>
+          </div>
+        ) : null}
         <video
           ref={videoRef}
           playsInline

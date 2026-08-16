@@ -67,7 +67,6 @@ export const configSchema = z.object({
       playlistType: z.enum(["vod", "event"]).default("vod"),
       heights: z
         .array(z.coerce.number().int().positive())
-        .min(1)
         .default([1080, 1440]),
     }),
     proxy: z.object({

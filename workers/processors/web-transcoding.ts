@@ -224,30 +224,37 @@ export function createWebTranscodingWorker(connection: { url: string }) {
                 ? path.join(tempDir, "sequence-source.mp4")
                 : inputPath;
             const { files } = await encodeHlsPackage(hlsInput, hlsDir);
-            for (const fileName of files) {
-              const filePath = path.join(hlsDir, ...fileName.split("/"));
-              const key = videoHlsSegmentKey(
-                userId,
-                assetId,
-                ...fileName.split("/"),
+            if (files.length === 0) {
+              logger.info(
+                { assetId },
+                "HLS skipped — no preview heights enabled in config",
               );
-              const contentType = fileName.endsWith(".m3u8")
-                ? "application/vnd.apple.mpegurl"
-                : "video/mp2t";
-              await storage.put(key, createReadStream(filePath), {
-                tier: "cache",
-                contentType,
-              });
+            } else {
+              for (const fileName of files) {
+                const filePath = path.join(hlsDir, ...fileName.split("/"));
+                const key = videoHlsSegmentKey(
+                  userId,
+                  assetId,
+                  ...fileName.split("/"),
+                );
+                const contentType = fileName.endsWith(".m3u8")
+                  ? "application/vnd.apple.mpegurl"
+                  : "video/mp2t";
+                await storage.put(key, createReadStream(filePath), {
+                  tier: "cache",
+                  contentType,
+                });
+              }
+              madeHls = true;
+              logger.info(
+                {
+                  assetId,
+                  segmentCount: files.length,
+                  prefix: videoHlsPrefix(userId, assetId),
+                },
+                "HLS package stored",
+              );
             }
-            madeHls = true;
-            logger.info(
-              {
-                assetId,
-                segmentCount: files.length,
-                prefix: videoHlsPrefix(userId, assetId),
-              },
-              "HLS package stored",
-            );
           }
         } finally {
           await fs.rm(tempDir, { recursive: true, force: true });

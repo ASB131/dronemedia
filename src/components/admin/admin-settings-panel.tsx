@@ -86,7 +86,11 @@ export function AdminSettingsPanel() {
   const [integrityCron, setIntegrityCron] = useState("0 4 * * 0");
   const [publicUrl, setPublicUrl] = useState("");
   const [maxFileGb, setMaxFileGb] = useState("80");
-  const [hlsHeights, setHlsHeights] = useState("1080,1440");
+  const [hlsHeightSet, setHlsHeightSet] = useState<Set<number>>(
+    () => new Set([1080, 1440]),
+  );
+  const [deletingHeight, setDeletingHeight] = useState<number | null>(null);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const [concurrencyDraft, setConcurrencyDraft] = useState<Record<string, string>>(
     {},
   );
@@ -112,7 +116,13 @@ export function AdminSettingsPanel() {
     setIntegrityCron(view.nightly?.integrityCheckCron ?? "0 4 * * 0");
     setPublicUrl(view.server?.publicUrl ?? "");
     setMaxFileGb(String(gbFromBytes(view.upload?.maxFileSizeBytes ?? 80 * 1024 ** 3)));
-    setHlsHeights((view.transcoding.hls.heights ?? [1080, 1440]).join(","));
+    setHlsHeightSet(
+      new Set(
+        (view.transcoding.hls.heights ?? [1080, 1440]).filter((n) =>
+          [720, 1080, 1440].includes(n),
+        ),
+      ),
+    );
     const nextConcurrency: Record<string, string> = {};
     for (const [key, value] of Object.entries(view.jobs?.concurrency ?? {})) {
       nextConcurrency[key] = String(value);
@@ -238,7 +248,7 @@ export function AdminSettingsPanel() {
       </section>
 
       <section className="space-y-3 rounded-xl border border-border p-4">
-        <h2 className="text-sm font-semibold">Playback</h2>
+        <h2 className="text-sm font-semibold">Playback &amp; video previews</h2>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -253,9 +263,124 @@ export function AdminSettingsPanel() {
           Allow in-app Source (camera original)
         </label>
         <p className="text-xs text-muted-foreground">
-          When off, players show Web only. Downloads of originals stay allowed.
+          When off, players hide Source. Downloads of originals stay allowed.
           Per-user overrides are in Admin → Users; admins always retain Source.
         </p>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-sm font-medium">Streaming preview qualities</p>
+          <p className="text-xs text-muted-foreground">
+            New uploads only generate the ticked resolutions. Unticking does not
+            delete existing cache — use the delete buttons below for that.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            {([720, 1080, 1440] as const).map((height) => (
+              <label key={height} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={hlsHeightSet.has(height)}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setHlsHeightSet((prev) => {
+                      const next = new Set(prev);
+                      if (event.target.checked) next.add(height);
+                      else next.delete(height);
+                      return next;
+                    });
+                  }}
+                />
+                {height}p
+              </label>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              const heights = [720, 1080, 1440].filter((h) =>
+                hlsHeightSet.has(h),
+              );
+              void save({
+                transcoding: {
+                  hls: {
+                    segmentDurationSeconds: Number(segmentSeconds),
+                    heights,
+                  },
+                  proxy: {
+                    maxHeight: Math.max(
+                      Number(maxHeight) || 1080,
+                      ...(heights.length > 0 ? heights : [1080]),
+                    ),
+                  },
+                },
+              });
+            }}
+          >
+            Save preview qualities
+          </Button>
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-sm font-medium">Clear generated previews</p>
+          <p className="text-xs text-muted-foreground">
+            Deletes that resolution from cache for every video and rewrites HLS
+            playlists. Source media is not touched.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {([720, 1080, 1440] as const).map((height) => (
+              <Button
+                key={height}
+                size="sm"
+                variant="outline"
+                disabled={busy || deletingHeight != null}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Delete all ${height}p streaming previews site-wide? Source files are kept.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  void (async () => {
+                    setDeletingHeight(height);
+                    setCleanupMessage(null);
+                    try {
+                      const response = await fetch("/api/admin/cache", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "deleteHlsHeight",
+                          height,
+                        }),
+                      });
+                      if (!response.ok) {
+                        setCleanupMessage(`Failed to delete ${height}p previews`);
+                        return;
+                      }
+                      const payload = (await response.json()) as {
+                        assetsTouched?: number;
+                        variantsDeleted?: number;
+                        playlistsRewritten?: number;
+                      };
+                      setCleanupMessage(
+                        `Deleted ${height}p: ${payload.variantsDeleted ?? 0} folders · ${payload.playlistsRewritten ?? 0} playlists · ${payload.assetsTouched ?? 0} assets`,
+                      );
+                    } catch {
+                      setCleanupMessage(`Failed to delete ${height}p previews`);
+                    } finally {
+                      setDeletingHeight(null);
+                    }
+                  })();
+                }}
+              >
+                {deletingHeight === height
+                  ? `Deleting ${height}p…`
+                  : `Delete all ${height}p`}
+              </Button>
+            ))}
+          </div>
+          {cleanupMessage ? (
+            <p className="text-xs text-muted-foreground">{cleanupMessage}</p>
+          ) : null}
+        </div>
       </section>
 
       <section className="space-y-3 rounded-xl border border-border p-4">
@@ -575,7 +700,7 @@ export function AdminSettingsPanel() {
         </label>
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">
-            Max height
+            Proxy max height
             <Input
               className="mt-1 w-28"
               value={maxHeight}
@@ -590,14 +715,6 @@ export function AdminSettingsPanel() {
               onChange={(event) => setSegmentSeconds(event.target.value)}
             />
           </label>
-          <label className="text-sm">
-            HLS heights (comma-separated)
-            <Input
-              className="mt-1 w-40"
-              value={hlsHeights}
-              onChange={(event) => setHlsHeights(event.target.value)}
-            />
-          </label>
           <Button
             size="sm"
             disabled={busy}
@@ -607,10 +724,9 @@ export function AdminSettingsPanel() {
                   proxy: { maxHeight: Number(maxHeight) },
                   hls: {
                     segmentDurationSeconds: Number(segmentSeconds),
-                    heights: hlsHeights
-                      .split(",")
-                      .map((part) => Number(part.trim()))
-                      .filter((n) => Number.isFinite(n) && n > 0),
+                    heights: [720, 1080, 1440].filter((h) =>
+                      hlsHeightSet.has(h),
+                    ),
                   },
                 },
               })
@@ -620,7 +736,9 @@ export function AdminSettingsPanel() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Pause/enable Transcoding and Panorama stitch under Admin → Jobs.
+          Preview qualities (720 / 1080 / 1440) are under Playback above. Proxy
+          max height caps the progressive MP4 proxy only. Pause/enable
+          Transcoding under Admin → Jobs.
         </p>
       </section>
 

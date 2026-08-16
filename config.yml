@@ -67,6 +67,7 @@ transcoding:
     segmentDurationSeconds: 6
     playlistType: vod
     # ABR ladder shown in the player quality menu (full-res originals stay on media).
+    # Admin UI uses checkboxes for 720 / 1080 / 1440. Empty = no streaming previews.
     heights: [1080, 1440]
   proxy:
     maxHeight: 1440

@@ -42,6 +42,8 @@ type AccountPayload = {
   diskUsedBytes?: number | null;
   diskTotalBytes?: number | null;
   allowInAppSource?: boolean;
+  enabledPreviewHeights?: number[];
+  previewQualitiesDisabled?: boolean;
   username: string;
   email: string;
   role: string;
@@ -53,7 +55,7 @@ type AccountPayload = {
     downloadOriginalDefault: boolean;
     zipMultiSelectDefault: boolean;
     notificationsEnabled: boolean;
-    defaultPlaybackResolution: "1080" | "1440" | "source";
+    defaultPlaybackResolution: "720" | "1080" | "1440" | "source";
     previewLutId: string | null;
     defaultDLogLutId: string | null;
     defaultDLogMLutId: string | null;
@@ -477,33 +479,62 @@ export function AccountSettingsView() {
                   Starting resolution for videos. Source plays the original
                   camera file in the browser.
                 </p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                {(account.previewQualitiesDisabled ||
+                  (account.enabledPreviewHeights?.length ?? 0) === 0) &&
+                account.allowInAppSource === false ? (
+                  <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
+                    All media preview types are disabled. Contact an
+                    administrator.
+                  </p>
+                ) : null}
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {(
                     [
+                      ["720", "720"],
                       ["1080", "1080"],
                       ["1440", "1440"],
                       ["source", "Source"],
                     ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        void savePreferences({
-                          defaultPlaybackResolution: value,
-                        })
-                      }
-                      className={cn(
-                        "h-10 rounded-xl border text-sm font-medium transition",
-                        (account.preferences.defaultPlaybackResolution ??
-                          "1080") === value
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border hover:bg-muted/40",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  ).map(([value, label]) => {
+                    const enabledHeights = account.enabledPreviewHeights ?? [
+                      1080, 1440,
+                    ];
+                    const previewDisabled =
+                      value !== "source" &&
+                      !enabledHeights.includes(Number(value));
+                    const sourceDisabled =
+                      value === "source" && account.allowInAppSource === false;
+                    const disabled = previewDisabled || sourceDisabled;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? "Disabled by an administrator"
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (disabled) return;
+                          void savePreferences({
+                            defaultPlaybackResolution: value,
+                          });
+                        }}
+                        className={cn(
+                          "h-10 rounded-xl border text-sm font-medium transition",
+                          disabled
+                            ? "cursor-not-allowed border-border/60 text-muted-foreground/50"
+                            : (account.preferences.defaultPlaybackResolution ??
+                                  "1080") === value
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border hover:bg-muted/40",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
                   In-app Source viewing:{" "}

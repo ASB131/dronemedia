@@ -3,8 +3,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { findUserById } from "@/lib/auth/users";
+import { loadConfig } from "@/lib/config";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import {
+  coercePlaybackResolution,
+  normalizeHlsPreviewHeights,
+} from "@/lib/playback/resolution";
+import { resolveAllowInAppSource } from "@/lib/playback/source-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +22,7 @@ const bodySchema = z.object({
   zipMultiSelectDefault: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
   defaultPlaybackResolution: z
-    .enum(["1080", "1440", "source"])
+    .enum(["720", "1080", "1440", "source"])
     .optional(),
   previewLutId: z.string().uuid().nullable().optional(),
   defaultDLogLutId: z.string().uuid().nullable().optional(),
@@ -27,6 +34,46 @@ export async function PATCH(request: Request) {
     const session = await requireApprovedSession();
     const body = bodySchema.parse(await request.json());
     const db = getWebDb();
+    const config = loadConfig();
+    const user = await findUserById(session.user.id);
+    if (!user) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    const enabledHeights = normalizeHlsPreviewHeights(
+      config.transcoding.hls.heights,
+    );
+    const allowInAppSource = resolveAllowInAppSource({
+      role: user.role,
+      userPreference: user.preferences?.allowInAppSource ?? null,
+      globalAllow: config.playback?.allowInAppSource ?? true,
+    });
+
+    let nextResolution = body.defaultPlaybackResolution;
+    if (nextResolution !== undefined) {
+      if (nextResolution === "source" && !allowInAppSource) {
+        return NextResponse.json(
+          { error: "Source playback is disabled" },
+          { status: 400 },
+        );
+      }
+      if (
+        nextResolution !== "source" &&
+        !enabledHeights.includes(
+          Number(nextResolution) as (typeof enabledHeights)[number],
+        )
+      ) {
+        return NextResponse.json(
+          { error: "That preview quality is disabled by an administrator" },
+          { status: 400 },
+        );
+      }
+      nextResolution = coercePlaybackResolution(
+        nextResolution,
+        enabledHeights,
+        allowInAppSource,
+      );
+    }
 
     const [row] = await db
       .select({ preferences: users.preferences })
@@ -50,8 +97,8 @@ export async function PATCH(request: Request) {
       ...(body.notificationsEnabled !== undefined
         ? { notificationsEnabled: body.notificationsEnabled }
         : {}),
-      ...(body.defaultPlaybackResolution !== undefined
-        ? { defaultPlaybackResolution: body.defaultPlaybackResolution }
+      ...(nextResolution !== undefined
+        ? { defaultPlaybackResolution: nextResolution }
         : {}),
       ...(body.previewLutId !== undefined
         ? { previewLutId: body.previewLutId }

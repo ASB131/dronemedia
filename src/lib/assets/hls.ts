@@ -8,6 +8,15 @@ export function videoHlsPlaylistKey(userId: string, assetId: string): string {
   return buildCacheKey("hls", userId, assetId, "index.m3u8");
 }
 
+/** Variant folder for one ABR rung, e.g. hls/{user}/{asset}/1080 */
+export function videoHlsVariantPrefix(
+  userId: string,
+  assetId: string,
+  height: number,
+): string {
+  return buildCacheKey("hls", userId, assetId, String(Math.round(height)));
+}
+
 export function videoHlsSegmentKey(
   userId: string,
   assetId: string,
