@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Globe2, LogOut, Settings, User } from "lucide-react";
+import { Clapperboard, Globe2, LogOut, Settings } from "lucide-react";
 
 import { signOutAction } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 export function ProfileMenu({ username }: { username: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const initial = (username.trim()[0] ?? "?").toUpperCase();
 
   useEffect(() => {
     if (!open) return;
@@ -34,9 +35,9 @@ export function ProfileMenu({ username }: { username: string }) {
         aria-label="Account menu"
         title={username}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex size-10 items-center justify-center rounded-full hover:bg-muted"
+        className="inline-flex size-9 items-center justify-center rounded-full bg-amber-400 text-sm font-semibold text-white ring-1 ring-[#acccfa]/80 hover:brightness-110"
       >
-        <User className="size-5" />
+        {initial}
       </button>
       {open ? (
         <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-lg">
@@ -45,6 +46,14 @@ export function ProfileMenu({ username }: { username: string }) {
             <p className="text-xs text-muted-foreground">Account</p>
           </div>
           <div className="p-1.5">
+            <Link
+              href="/cinema"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm hover:bg-muted"
+            >
+              <Clapperboard className="size-4 text-muted-foreground" />
+              Cinematic
+            </Link>
             <Link
               href={`/u/${encodeURIComponent(username)}`}
               onClick={() => setOpen(false)}

@@ -65,6 +65,10 @@ export function VideoPlayer({
   scrubberMarkers,
   className,
   onTimeUpdate,
+  onEnded,
+  hideControls = false,
+  autoPlay = false,
+  muted = true,
   seekRequest,
 }: {
   src: string;
@@ -82,6 +86,10 @@ export function VideoPlayer({
   scrubberMarkers?: ScrubberMarker[];
   className?: string;
   onTimeUpdate?: (currentTimeSeconds: number, durationSeconds: number) => void;
+  onEnded?: () => void;
+  hideControls?: boolean;
+  autoPlay?: boolean;
+  muted?: boolean;
   /** Change `token` to force a seek (e.g. map click). */
   seekRequest?: { timeSeconds: number; token: number } | null;
 }) {
@@ -127,8 +135,8 @@ export function VideoPlayer({
 
     let hls: Hls | null = null;
     let cancelled = false;
-    video.muted = true;
-    video.volume = 0;
+    video.muted = muted;
+    video.volume = muted ? 0 : 1;
 
     const applyRestore = () => {
       if (restoreTimeRef.current != null) {
@@ -272,19 +280,32 @@ export function VideoPlayer({
       setDuration(video.duration || 0);
       onTimeUpdate?.(video.currentTime, video.duration || 0);
     };
-    const onMeta = () => setDuration(video.duration || 0);
+    const onEndedEvent = () => onEnded?.();
+    const onMeta = () => {
+      setDuration(video.duration || 0);
+      if (autoPlay) void video.play().catch(() => undefined);
+    };
 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("loadedmetadata", onMeta);
+    video.addEventListener("ended", onEndedEvent);
     return () => {
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("loadedmetadata", onMeta);
+      video.removeEventListener("ended", onEndedEvent);
     };
-  }, [onTimeUpdate]);
+  }, [onTimeUpdate, onEnded, autoPlay]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (autoPlay) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [autoPlay]);
 
   async function togglePlay() {
     const video = videoRef.current;
@@ -353,6 +374,13 @@ export function VideoPlayer({
     setPlaybackRate(rate);
   }
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = muted;
+    video.volume = muted ? 0 : 1;
+  }, [muted]);
+
   const progress = duration > 0 ? currentTime / duration : 0;
   const rateOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
   const showQualityMenu = Boolean(hlsSrc) || Boolean(sourceSrc);
@@ -382,6 +410,41 @@ export function VideoPlayer({
       }))
       .filter((marker) => Number.isFinite(marker.ratio));
   }, [scrubberMarkers, duration]);
+
+  const mediaBody = (
+      <div className="relative flex size-full max-h-full max-w-full items-center justify-center">
+        {showPreviewDisabledBanner ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 px-6 text-center">
+            <p className="max-w-sm text-sm text-white/90">
+              All media preview types are disabled. Contact an administrator.
+            </p>
+          </div>
+        ) : null}
+        <video
+          ref={videoRef}
+          playsInline
+          muted={muted}
+          className={cn(
+            "pointer-events-none max-h-full max-w-full object-contain",
+            useLut ? "absolute inset-0 size-full opacity-0" : "size-full",
+          )}
+          preload="metadata"
+        />
+        {useLut && lutId ? (
+          <LutGradeCanvas
+            key={lutId}
+            sourceRef={videoRef}
+            lutId={lutId}
+            className="size-full"
+            onFallback={onLutFallback}
+          />
+        ) : null}
+      </div>
+  );
+
+  if (hideControls) {
+    return <div className={cn("relative size-full bg-black", className)}>{mediaBody}</div>;
+  }
 
   return (
     <MediaZoomStage
@@ -530,34 +593,7 @@ export function VideoPlayer({
         </div>
       }
     >
-      <div className="relative flex size-full max-h-full max-w-full items-center justify-center">
-        {showPreviewDisabledBanner ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80 px-6 text-center">
-            <p className="max-w-sm text-sm text-white/90">
-              All media preview types are disabled. Contact an administrator.
-            </p>
-          </div>
-        ) : null}
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          className={cn(
-            "pointer-events-none max-h-full max-w-full object-contain",
-            useLut ? "absolute inset-0 size-full opacity-0" : "size-full",
-          )}
-          preload="metadata"
-        />
-        {useLut && lutId ? (
-          <LutGradeCanvas
-            key={lutId}
-            sourceRef={videoRef}
-            lutId={lutId}
-            className="size-full"
-            onFallback={onLutFallback}
-          />
-        ) : null}
-      </div>
+      {mediaBody}
     </MediaZoomStage>
   );
 }

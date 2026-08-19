@@ -288,9 +288,16 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
-Current release: **1.0.4**
+Current release: **1.0.5**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.5 highlights
+
+- Immich-style chrome: nav order and selected pill, true black/white theme, header search alignment, letter avatar, storage card
+- Photos timeline: month scrubber, justified same-height rows, small gaps between tiles
+- Map heatmap toggle for all geotagged media
+- Cinematic library player (shuffle, web previews, LUT, all / favourites / albums)
 
 ### v1.0.4 highlights
 

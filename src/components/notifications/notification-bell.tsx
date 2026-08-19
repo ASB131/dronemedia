@@ -342,7 +342,8 @@ export function NotificationBell() {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Processing queue"
+        aria-label="Notifications"
+        className="size-10 rounded-full text-foreground"
         onClick={() => {
           setOpen((value) => {
             const next = !value;

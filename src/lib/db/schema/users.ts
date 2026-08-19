@@ -59,6 +59,9 @@ export const users = pgTable(
          * Admins always retain Source regardless of this flag.
          */
         allowInAppSource?: boolean | null;
+        cinematicSource?: "all" | "favorites" | "albums";
+        cinematicAlbumIds?: string[];
+        cinematicLutId?: string | null;
         portfolio?: {
           coverAssetId?: string | null;
           featuredAlbumIds?: string[];

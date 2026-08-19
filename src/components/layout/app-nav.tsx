@@ -25,26 +25,26 @@ type NavItem = {
 };
 
 type NavSection = {
-  title: string;
+  title: string | null;
   items: NavItem[];
 };
 
 const navSections: NavSection[] = [
   {
-    title: "Library",
+    title: null,
     items: [
       { label: "Photos", href: "/", icon: ImageIcon },
-      { label: "Favorites", href: "/favorites", icon: Heart },
-      { label: "Albums", href: "/albums", icon: Album },
-      { label: "Bin", href: "/bin", icon: Trash2 },
+      { label: "Map", href: "/map", icon: Map },
     ],
   },
   {
-    title: "Explore",
+    title: "Library",
     items: [
-      { label: "Map", href: "/map", icon: Map },
+      { label: "Favourites", href: "/favorites", icon: Heart },
+      { label: "Albums", href: "/albums", icon: Album },
       { label: "Flights", href: "/flights", icon: Plane },
       { label: "Community", href: "/community", icon: Globe2 },
+      { label: "Bin", href: "/bin", icon: Trash2 },
     ],
   },
   {
@@ -64,21 +64,21 @@ export function AppNav({ showAdmin }: { showAdmin: boolean }) {
         ...navSections,
         {
           title: "Admin",
-          items: [
-            { label: "Administration", href: "/admin", icon: Shield },
-          ],
+          items: [{ label: "Administration", href: "/admin", icon: Shield }],
         },
       ]
     : navSections;
 
   return (
-    <nav className="dm-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-3">
+    <nav className="dm-scrollbar flex-1 space-y-4 overflow-y-auto py-3">
       {sections.map((section) => (
-        <div key={section.title}>
-          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
-            {section.title}
-          </p>
-          <div className="space-y-0.5">
+        <div key={section.title ?? "top"}>
+          {section.title ? (
+            <p className="mb-1.5 px-6 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {section.title}
+            </p>
+          ) : null}
+          <div className="space-y-1">
             {section.items.map((item) => {
               const active =
                 item.href === "/"
@@ -92,19 +92,19 @@ export function AppNav({ showAdmin }: { showAdmin: boolean }) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "flex items-center gap-3 py-2.5 pl-6 pr-4 text-base font-medium transition-colors",
                     active
-                      ? "dm-nav-active bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/80 hover:bg-muted hover:text-foreground",
+                      ? "dm-nav-active mr-4 rounded-r-full bg-[#2c3138] text-[#acccfa]"
+                      : "mr-4 rounded-r-full text-sidebar-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon
                     className={cn(
-                      "size-4 shrink-0",
-                      active ? "text-primary" : "text-muted-foreground",
+                      "size-5 shrink-0",
+                      active ? "text-[#acccfa]" : "text-muted-foreground",
                     )}
                   />
-                  <span>{item.label}</span>
+                  <span className="truncate text-base font-medium">{item.label}</span>
                 </Link>
               );
             })}

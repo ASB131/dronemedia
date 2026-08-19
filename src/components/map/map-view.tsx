@@ -63,9 +63,19 @@ async function loadLeafletWithCluster() {
   await import("leaflet.markercluster");
   await import("leaflet.markercluster/dist/MarkerCluster.css");
   await import("leaflet.markercluster/dist/MarkerCluster.Default.css");
+  await import("leaflet.heat");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clustered = window.L as any;
+  if (typeof clustered?.heatLayer !== "function") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const heatMod = (await import("leaflet.heat")) as any;
+    if (typeof heatMod.heatLayer === "function") {
+      clustered.heatLayer = heatMod.heatLayer;
+    } else if (typeof heatMod.default === "function") {
+      clustered.heatLayer = heatMod.default;
+    }
+  }
   if (typeof clustered?.markerClusterGroup !== "function") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod = (await import("leaflet.markercluster")) as any;
@@ -105,6 +115,8 @@ export function MapView() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clusterRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const heatLayerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pathsLayerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tileLayerRef = useRef<any>(null);
@@ -121,9 +133,12 @@ export function MapView() {
   const [assets, setAssets] = useState<MapAssetDto[]>([]);
   const [flights, setFlights] = useState<MapFlightPathDto[]>([]);
   const [showPaths, setShowPaths] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [pathRedrawToken, setPathRedrawToken] = useState(0);
   const showPathsRef = useRef(showPaths);
   showPathsRef.current = showPaths;
+  const showHeatmapRef = useRef(showHeatmap);
+  showHeatmapRef.current = showHeatmap;
   const [typeFilter, setTypeFilter] = useState<AssetTypeFilter>("all");
   const [mapBooted, setMapBooted] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -156,6 +171,10 @@ export function MapView() {
     const L = leafletRef.current;
     const cluster = clusterRef.current;
     if (!map || !L || !cluster) return;
+    if (showHeatmapRef.current) {
+      cluster.clearLayers();
+      return;
+    }
 
     const currentAssets = assetsRef.current;
     const zoom = map.getZoom();
@@ -216,10 +235,17 @@ export function MapView() {
 
   const cursor = useTelemetryCursor(series, currentTime);
 
-  async function fetchAssetsForMap(map: LeafletMap | null, filter: AssetTypeFilter) {
+  async function fetchAssetsForMap(
+    map: LeafletMap | null,
+    filter: AssetTypeFilter,
+    heatmap = showHeatmapRef.current,
+  ) {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("type", filter);
-    if (map && fittedRef.current) {
+    if (heatmap) {
+      params.set("heatmap", "1");
+      params.set("limit", "8000");
+    } else if (map && fittedRef.current) {
       const box = boundsQuery(map);
       params.set("north", String(box.north));
       params.set("south", String(box.south));
@@ -413,6 +439,7 @@ export function MapView() {
       map.on("moveend", () => {
         setPathRedrawToken((value) => value + 1);
         if (!fittedRef.current) return;
+        if (showHeatmapRef.current) return;
         if (moveTimer) clearTimeout(moveTimer);
         moveTimer = setTimeout(() => {
           void fetchAssetsForMap(map, typeFilterRef.current);
@@ -437,6 +464,7 @@ export function MapView() {
       cursorMarkerRef.current = null;
       clusterRef.current = null;
       pathsLayerRef.current = null;
+      heatLayerRef.current = null;
       mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       fittedRef.current = false;
@@ -461,9 +489,49 @@ export function MapView() {
   // Sync asset markers (also re-layouts on zoom via zoomend in initMap).
   useEffect(() => {
     markerLayoutKeyRef.current = "";
-    syncAssetMarkers({ fitIfNeeded: true });
+    syncAssetMarkers({ fitIfNeeded: !showHeatmap });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assets]);
+  }, [assets, showHeatmap]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+
+    if (heatLayerRef.current) {
+      map.removeLayer(heatLayerRef.current);
+      heatLayerRef.current = null;
+    }
+
+    if (showHeatmap) {
+      if (clusterRef.current && map.hasLayer(clusterRef.current)) {
+        map.removeLayer(clusterRef.current);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const heatFactory = (L as any).heatLayer;
+      if (typeof heatFactory === "function") {
+        const points = assetsRef.current.map(
+          (asset) => [asset.lat, asset.lng, 0.65] as [number, number, number],
+        );
+        heatLayerRef.current = heatFactory(points, {
+          radius: 28,
+          blur: 22,
+          maxZoom: 17,
+          minOpacity: 0.35,
+        }).addTo(map);
+      }
+    } else if (clusterRef.current && !map.hasLayer(clusterRef.current)) {
+      map.addLayer(clusterRef.current);
+      markerLayoutKeyRef.current = "";
+      syncAssetMarkersRef.current();
+    }
+  }, [showHeatmap, assets]);
+
+  useEffect(() => {
+    if (!mapBooted) return;
+    void fetchAssetsForMap(mapInstanceRef.current, typeFilter, showHeatmap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHeatmap]);
 
   // Sync flight paths (close zoom + viewport cull only)
   useEffect(() => {
@@ -602,6 +670,14 @@ export function MapView() {
               <span className="text-[10px] opacity-70">(close zoom)</span>
             </label>
           ) : null}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showHeatmap}
+              onChange={(event) => setShowHeatmap(event.target.checked)}
+            />
+            Heatmap
+          </label>
         </div>
       </div>
 

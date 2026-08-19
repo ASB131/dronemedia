@@ -79,6 +79,9 @@ export async function GET() {
       defaultDLogLutId: user.preferences?.defaultDLogLutId ?? null,
       defaultDLogMLutId: user.preferences?.defaultDLogMLutId ?? null,
       allowInAppSource: user.preferences?.allowInAppSource ?? null,
+      cinematicSource: user.preferences?.cinematicSource ?? "all",
+      cinematicAlbumIds: user.preferences?.cinematicAlbumIds ?? [],
+      cinematicLutId: user.preferences?.cinematicLutId ?? null,
     };
 
     return NextResponse.json({

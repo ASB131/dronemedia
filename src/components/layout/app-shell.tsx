@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Menu, Upload, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { CloudUpload, Menu, X } from "lucide-react";
 
 import { signOutAction } from "@/actions/auth";
 import { SiteMark } from "@/components/brand/site-mark";
@@ -26,7 +27,18 @@ export type AppShellUser = {
 
 function formatBytes(bytes: number) {
   if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  const gib = bytes / 1024 ** 3;
+  if (gib >= 1024) {
+    return `${(gib / 1024).toFixed(1)} TiB`;
+  }
+  if (gib >= 1) {
+    return `${gib.toFixed(1)} GiB`;
+  }
+  const mib = bytes / 1024 ** 2;
+  if (mib >= 1) {
+    return `${mib.toFixed(1)} MiB`;
+  }
+  const units = ["B", "KB", "MB"];
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
@@ -42,6 +54,7 @@ function applyTheme(theme: "light" | "dark" | "system") {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const dark = theme === "dark" || (theme === "system" && prefersDark);
   root.classList.toggle("dark", dark);
+  root.classList.toggle("light", !dark);
   try {
     localStorage.setItem("dm-theme", theme);
   } catch {
@@ -57,6 +70,8 @@ export function AppShell({
   children: React.ReactNode;
   user: AppShellUser;
 }) {
+  const pathname = usePathname();
+  const cinemaMode = pathname === "/cinema";
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [usedBytes, setUsedBytes] = useState<number | null>(null);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
@@ -224,32 +239,42 @@ export function AppShell({
   return (
     <div className="flex h-dvh flex-col bg-background">
       <ServiceWorkerRegister />
-      <header className="flex h-[var(--navbar-height)] shrink-0 items-center gap-3 border-b border-border px-3 sm:px-5">
-        <Button
-          variant="ghost"
-          size="icon-lg"
-          aria-label="Toggle sidebar"
-          className="md:hidden"
-          onClick={() => setMobileNavOpen((open) => !open)}
-        >
-          {mobileNavOpen ? <X className="size-6" /> : <Menu className="size-6" />}
-        </Button>
-        <SiteMark href="/" />
-
-        <div className="mx-2 min-w-0 flex-1 md:mx-6">
-          <SearchBar />
+      {cinemaMode ? (
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          {children}
+        </main>
+      ) : (
+        <>
+      <header className="grid h-[var(--navbar-height)] shrink-0 grid-cols-[auto_minmax(0,1fr)] border-b border-black/10 dark:border-white/20 md:grid-cols-[17rem_minmax(0,1fr)]">
+        <div className="flex items-center gap-2 px-3 sm:px-5">
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            aria-label="Toggle sidebar"
+            className="md:hidden"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            {mobileNavOpen ? <X className="size-6" /> : <Menu className="size-6" />}
+          </Button>
+          <SiteMark href="/" />
         </div>
 
-        <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
-          <Link
-            href="/upload"
-            aria-label="Upload"
-            className="inline-flex size-10 items-center justify-center rounded-full text-foreground hover:bg-muted"
-          >
-            <Upload className="size-5" />
-          </Link>
-          <NotificationBell />
-          <ProfileMenu username={user.username} />
+        <div className="flex min-w-0 items-center gap-3 px-3 sm:px-4">
+          <div className="min-w-0 flex-1">
+            <SearchBar />
+          </div>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Link
+              href="/upload"
+              aria-label="Upload"
+              className="inline-flex h-11 items-center gap-2 rounded-full px-2 text-sm font-medium text-foreground hover:bg-muted sm:px-3"
+            >
+              <CloudUpload className="size-5" />
+              <span className="hidden sm:inline">Upload</span>
+            </Link>
+            <NotificationBell />
+            <ProfileMenu username={user.username} />
+          </div>
         </div>
       </header>
 
@@ -265,7 +290,7 @@ export function AppShell({
 
         <aside
           className={cn(
-            "z-40 flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 md:static md:w-[17rem] md:translate-x-0",
+            "z-40 flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground transition-transform duration-200 md:static md:w-[17rem] md:translate-x-0",
             "absolute inset-y-0 left-0 md:relative",
             mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
           )}
@@ -276,28 +301,33 @@ export function AppShell({
           >
             <AppNav showAdmin={user.role === "admin"} />
           </div>
-          <footer className="space-y-2 border-t border-sidebar-border p-4 text-xs text-muted-foreground">
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${usedPct}%` }}
-              />
+          <footer className="space-y-3 p-4">
+            <div className="rounded-xl bg-muted/80 px-3 py-3 dark:bg-[#1a1a1a]">
+              <p className="text-sm font-semibold text-foreground">
+                Storage space
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {footerUsed != null && footerTotal != null
+                  ? `${formatBytes(footerUsed)} of ${formatBytes(footerTotal)} used`
+                  : "Loading…"}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-neutral-700/40 dark:bg-neutral-700">
+                <div
+                  className="h-full rounded-full bg-[#acccfa]"
+                  style={{ width: `${usedPct}%` }}
+                />
+              </div>
             </div>
-            <p className="font-medium text-foreground/80">
-              {footerUsed != null && footerTotal != null
-                ? `${formatBytes(footerUsed)} / ${formatBytes(footerTotal)}`
-                : "Storage…"}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {diskUsedBytes != null && diskTotalBytes != null
-                ? "Disk (media volume)"
-                : "Library quota"}
-            </p>
-            <p>Signed in as {user.username}</p>
-            <p>
-              Server Online • v{APP_VERSION}
-              {updateAvailable ? " · update available" : ""}
-            </p>
+            <div className="flex items-center justify-between px-1 text-sm">
+              <span className="inline-flex items-center gap-2 text-foreground">
+                <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+                Server Online
+              </span>
+              <span className="text-xs text-muted-foreground">
+                v{APP_VERSION}
+                {updateAvailable ? " · update" : ""}
+              </span>
+            </div>
           </footer>
         </aside>
 
@@ -308,6 +338,8 @@ export function AppShell({
         </main>
       </div>
       <UploadDock />
+        </>
+      )}
     </div>
   );
 }

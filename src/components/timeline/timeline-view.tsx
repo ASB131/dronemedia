@@ -32,19 +32,15 @@ import {
   peekTimelineScrollPosition,
   saveTimelineScrollPosition,
 } from "@/lib/navigation/media-return";
+import {
+  layoutJustifiedRows,
+  justifiedRowsHeight,
+  TIMELINE_TILE_GAP,
+  timelineRowTargetHeight,
+} from "@/lib/timeline/justified";
 import { cn } from "@/lib/utils";
 
 const VIDEO_HOVER_PREVIEW_MS = 1000;
-
-/** Match Tailwind breakpoints used by the timeline asset grids. */
-function timelineColumnCount(width: number) {
-  if (width >= 1536) return 7;
-  if (width >= 1280) return 6;
-  if (width >= 1024) return 5;
-  if (width >= 768) return 4;
-  if (width >= 640) return 3;
-  return 2;
-}
 
 function AssetTile({
   asset,
@@ -53,6 +49,8 @@ function AssetTile({
   onToggle,
   onQuickSelect,
   onOpen,
+  layoutWidth,
+  layoutHeight,
 }: {
   asset: TimelineAssetDto;
   selected: boolean;
@@ -60,6 +58,8 @@ function AssetTile({
   onToggle: (shiftKey: boolean) => void;
   onQuickSelect: (shiftKey: boolean) => void;
   onOpen?: () => void;
+  layoutWidth?: number;
+  layoutHeight?: number;
 }) {
   const [thumbLoaded, setThumbLoaded] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
@@ -192,25 +192,25 @@ function AssetTile({
         {asset.panoramaBadge ? (
           <span aria-label={asset.panoramaBadge}>{asset.panoramaBadge}</span>
         ) : asset.assetType === "video" ? (
-          <Film className="size-3" aria-label="Video" />
+          <Film className="h-4 w-4 shrink-0" aria-label="Video" />
         ) : asset.assetType === "sequence" ? (
           <>
-            <Images className="size-3" aria-label="Sequence" />
+            <Images className="h-4 w-4 shrink-0" aria-label="Sequence" />
             {asset.frameCount ? (
               <span className="tabular-nums">{asset.frameCount}</span>
             ) : null}
           </>
         ) : (
-          <ImageIcon className="size-3" aria-label="Photo" />
+          <ImageIcon className="h-4 w-4 shrink-0" aria-label="Photo" />
         )}
       </span>
 
       <span className="absolute right-1 top-1 z-[1] inline-flex items-center gap-0.5">
         {asset.isPublic ? (
-          <Globe2 className="size-3.5 text-sky-300 drop-shadow" aria-label="Public" />
+          <Globe2 className="h-4 w-4 shrink-0 text-sky-300 drop-shadow" aria-label="Public" />
         ) : null}
         {asset.favorite ? (
-          <Heart className="size-3.5 fill-[#ed79b5] text-[#ed79b5] drop-shadow" />
+          <Heart className="h-4 w-4 shrink-0 fill-[#ed79b5] text-[#ed79b5] drop-shadow" />
         ) : null}
       </span>
 
@@ -225,10 +225,13 @@ function AssetTile({
   );
 
   const tileClass = cn(
-    "dm-media-tile group relative block w-full overflow-hidden rounded-md bg-muted/40",
+    "dm-media-tile group relative block overflow-hidden bg-muted/40",
+    layoutWidth ? "shrink-0" : "w-full",
     selected && "ring-2 ring-primary",
   );
-  const tileStyle = { aspectRatio: String(aspectRatio) };
+  const tileStyle = layoutWidth
+    ? { width: layoutWidth, height: layoutHeight }
+    : { aspectRatio: String(aspectRatio) };
 
   if (selectMode) {
     return (
@@ -375,23 +378,30 @@ export function TimelineView({
     year: number | null;
     monthLabel: string | null;
   }>({ year: null, monthLabel: null });
+  const [railHover, setRailHover] = useState<{
+    year: number;
+    monthLabel: string | null;
+    ratio: number;
+    index: number;
+  } | null>(null);
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
   const inFlightCursorRef = useRef<string | null>(null);
-  const [gridCols, setGridCols] = useState(5);
+  const [timelineWidth, setTimelineWidth] = useState(960);
 
   useEffect(() => {
-    const el = parentRef.current;
+    const el = widthRef.current ?? parentRef.current;
     if (!el) return;
     const update = () => {
-      setGridCols(timelineColumnCount(el.clientWidth));
+      setTimelineWidth(Math.max(320, el.clientWidth));
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [data]);
 
   const loadTimeline = useCallback(async (cursor?: string) => {
     const searchParams = new URLSearchParams({ limit: "80" });
@@ -491,12 +501,15 @@ export function TimelineView({
       if (!item) return 80;
       if (item.type === "year") return 44;
       if (item.type === "month") return 32;
-      const cols = Math.max(2, gridCols);
-      const rows = Math.ceil(item.section.assets.length / cols);
-      const width = parentRef.current?.clientWidth ?? 960;
-      const gap = 4;
-      const tile = Math.max(80, Math.floor((width - gap * (cols - 1)) / cols));
-      return 40 + rows * (tile + gap);
+      const target = timelineRowTargetHeight(timelineWidth);
+      const rows = layoutJustifiedRows(
+        item.section.assets,
+        (asset) => asset.aspectRatio,
+        timelineWidth,
+        target,
+        TIMELINE_TILE_GAP,
+      );
+      return 36 + justifiedRowsHeight(rows, TIMELINE_TILE_GAP);
     },
     overscan: 8,
   });
@@ -504,7 +517,7 @@ export function TimelineView({
   // Re-measure when column count changes so scroll positions stay accurate.
   useEffect(() => {
     rowVirtualizer.measure();
-  }, [gridCols, rowVirtualizer]);
+  }, [timelineWidth, rowVirtualizer]);
 
   const scrubMarkers = useMemo(() => {
     const markers: Array<{
@@ -589,6 +602,22 @@ export function TimelineView({
 
   function jumpToIndex(index: number) {
     rowVirtualizer.scrollToIndex(index, { align: "start" });
+  }
+
+  function markerAtRatio(ratio: number) {
+    if (scrubMarkers.length === 0) return null;
+    const months = scrubMarkers.filter((marker) => marker.monthLabel);
+    const pool = months.length > 0 ? months : scrubMarkers;
+    let best = pool[0]!;
+    let bestDelta = Math.abs(best.ratio - ratio);
+    for (const marker of pool) {
+      const delta = Math.abs(marker.ratio - ratio);
+      if (delta < bestDelta) {
+        best = marker;
+        bestDelta = delta;
+      }
+    }
+    return best;
   }
 
   const rememberAssetOpen = useCallback(
@@ -972,6 +1001,7 @@ export function TimelineView({
           ref={parentRef}
           className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pr-8 pt-16"
         >
+          <div ref={widthRef} className="w-full">
           <OnThisDayPanel
             groups={data.onThisDay}
             onOpen={rememberAssetOpen}
@@ -1011,23 +1041,44 @@ export function TimelineView({
                     </h3>
                   ) : null}
                   {item.type === "section" ? (
-                    <section className="pb-5">
-                      <p className="mb-2.5 text-sm font-semibold text-foreground/90">
+                    <section className="pb-4">
+                      <p className="mb-2 text-sm font-semibold text-foreground/90">
                         {item.section.dateLabel}
                       </p>
-                      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-                        {item.section.assets.map((asset) => (
-                          <AssetTile
-                            key={asset.id}
-                            asset={asset}
-                            selectMode={selectMode}
-                            selected={selected.has(asset.id)}
-                            onToggle={(shiftKey) => toggle(asset.id, shiftKey)}
-                            onQuickSelect={(shiftKey) =>
-                              quickSelect(asset.id, shiftKey)
-                            }
-                            onOpen={() => rememberAssetOpen(asset.id)}
-                          />
+                      <div
+                        className="flex flex-col"
+                        style={{ gap: TIMELINE_TILE_GAP }}
+                      >
+                        {layoutJustifiedRows(
+                          item.section.assets,
+                          (asset) => asset.aspectRatio,
+                          timelineWidth,
+                          timelineRowTargetHeight(timelineWidth),
+                          TIMELINE_TILE_GAP,
+                        ).map((row, rowIndex) => (
+                          <div
+                            key={`${item.section.key}-row-${rowIndex}`}
+                            className="flex w-full"
+                            style={{ height: row.height, gap: TIMELINE_TILE_GAP }}
+                          >
+                            {row.items.map((cell) => (
+                              <AssetTile
+                                key={cell.item.id}
+                                asset={cell.item}
+                                layoutWidth={cell.width}
+                                layoutHeight={cell.height}
+                                selectMode={selectMode}
+                                selected={selected.has(cell.item.id)}
+                                onToggle={(shiftKey) =>
+                                  toggle(cell.item.id, shiftKey)
+                                }
+                                onQuickSelect={(shiftKey) =>
+                                  quickSelect(cell.item.id, shiftKey)
+                                }
+                                onOpen={() => rememberAssetOpen(cell.item.id)}
+                              />
+                            ))}
+                          </div>
                         ))}
                       </div>
                     </section>
@@ -1047,30 +1098,59 @@ export function TimelineView({
               </Button>
             </div>
           ) : null}
+          </div>
         </div>
 
         {scrubMarkers.length > 0 ? (
           <div
             className={cn(
-              "pointer-events-none absolute inset-y-3 right-1 z-30 flex w-10 flex-col items-end transition-opacity duration-200",
-              scrubVisible ? "opacity-100" : "opacity-40",
+              "absolute inset-y-3 right-0 z-30 flex w-12 flex-col items-end transition-opacity duration-200",
+              scrubVisible || railHover ? "opacity-100" : "opacity-40",
             )}
-            aria-hidden={false}
           >
             <div className="relative h-full w-full">
-              {scrubVisible && scrubLabel.year ? (
-                <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-lg bg-primary px-2.5 py-1.5 text-right text-primary-foreground shadow-md">
+              {(railHover ?? (scrubVisible ? scrubLabel : null)) &&
+              (railHover || scrubLabel.year) ? (
+                <div
+                  className="pointer-events-none absolute right-8 z-10 -translate-y-1/2 rounded-lg bg-primary px-2.5 py-1.5 text-right text-primary-foreground shadow-md"
+                  style={{
+                    top: railHover
+                      ? `${railHover.ratio * 100}%`
+                      : "50%",
+                  }}
+                >
                   <p className="text-sm font-semibold leading-none">
-                    {scrubLabel.year}
+                    {railHover?.year ?? scrubLabel.year}
                   </p>
-                  {scrubLabel.monthLabel ? (
+                  {(railHover?.monthLabel ?? scrubLabel.monthLabel) ? (
                     <p className="mt-1 text-[10px] leading-none opacity-90">
-                      {scrubLabel.monthLabel}
+                      {railHover?.monthLabel ?? scrubLabel.monthLabel}
                     </p>
                   ) : null}
                 </div>
               ) : null}
-              <div className="pointer-events-auto absolute inset-y-0 right-0 w-6">
+              <div
+                className="absolute inset-y-0 right-0 w-10 cursor-pointer"
+                onPointerMove={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const ratio = Math.min(
+                    1,
+                    Math.max(0, (event.clientY - rect.top) / rect.height),
+                  );
+                  const marker = markerAtRatio(ratio);
+                  if (!marker) return;
+                  setRailHover({
+                    year: marker.year,
+                    monthLabel: marker.monthLabel ?? null,
+                    ratio,
+                    index: marker.index,
+                  });
+                }}
+                onPointerLeave={() => setRailHover(null)}
+                onClick={() => {
+                  if (railHover) jumpToIndex(railHover.index);
+                }}
+              >
                 {scrubMarkers
                   .filter((marker) => !marker.monthLabel)
                   .map((marker) => (
@@ -1078,9 +1158,12 @@ export function TimelineView({
                       key={`y-${marker.index}`}
                       type="button"
                       title={String(marker.year)}
-                      className="absolute right-0 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground hover:text-primary"
+                      className="absolute right-1 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground hover:text-primary"
                       style={{ top: `${marker.ratio * 100}%` }}
-                      onClick={() => jumpToIndex(marker.index)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        jumpToIndex(marker.index);
+                      }}
                     >
                       {marker.year}
                     </button>

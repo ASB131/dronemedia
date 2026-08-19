@@ -22,10 +22,22 @@ export async function GET(request: Request) {
 
     const assets = await listMapAssetsForUser(session.user.id, {
       assetType,
-      north: parseNum(searchParams.get("north")),
-      south: parseNum(searchParams.get("south")),
-      east: parseNum(searchParams.get("east")),
-      west: parseNum(searchParams.get("west")),
+      north:
+        searchParams.get("heatmap") === "1"
+          ? undefined
+          : parseNum(searchParams.get("north")),
+      south:
+        searchParams.get("heatmap") === "1"
+          ? undefined
+          : parseNum(searchParams.get("south")),
+      east:
+        searchParams.get("heatmap") === "1"
+          ? undefined
+          : parseNum(searchParams.get("east")),
+      west:
+        searchParams.get("heatmap") === "1"
+          ? undefined
+          : parseNum(searchParams.get("west")),
       limit: parseNum(searchParams.get("limit")),
     });
     return NextResponse.json({ assets, count: assets.length });

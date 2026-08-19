@@ -10,7 +10,7 @@ export function SearchBar() {
 
   return (
     <form
-      className="mx-auto flex h-11 w-full max-w-2xl items-center gap-2 rounded-full border border-transparent bg-muted px-4 text-sm transition focus-within:border-primary/40 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20"
+      className="flex h-12 w-full max-w-3xl items-center gap-3 rounded-full bg-muted px-5 text-base dark:bg-[#1c1c1c]"
       onSubmit={(event) => {
         event.preventDefault();
         const trimmed = query.trim();
@@ -18,12 +18,12 @@ export function SearchBar() {
         router.push(`/search?q=${encodeURIComponent(trimmed)}`);
       }}
     >
-      <Search className="size-4 shrink-0 text-muted-foreground" />
+      <Search className="size-5 shrink-0 text-muted-foreground" />
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search filename, place, drone, date…"
-        className="w-full bg-transparent text-[15px] text-foreground outline-none placeholder:text-muted-foreground"
+        placeholder="Search your photos"
+        className="w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground"
       />
     </form>
   );

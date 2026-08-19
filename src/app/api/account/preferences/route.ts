@@ -27,6 +27,9 @@ const bodySchema = z.object({
   previewLutId: z.string().uuid().nullable().optional(),
   defaultDLogLutId: z.string().uuid().nullable().optional(),
   defaultDLogMLutId: z.string().uuid().nullable().optional(),
+  cinematicSource: z.enum(["all", "favorites", "albums"]).optional(),
+  cinematicAlbumIds: z.array(z.string().uuid()).max(50).optional(),
+  cinematicLutId: z.string().uuid().nullable().optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -108,6 +111,15 @@ export async function PATCH(request: Request) {
         : {}),
       ...(body.defaultDLogMLutId !== undefined
         ? { defaultDLogMLutId: body.defaultDLogMLutId }
+        : {}),
+      ...(body.cinematicSource !== undefined
+        ? { cinematicSource: body.cinematicSource }
+        : {}),
+      ...(body.cinematicAlbumIds !== undefined
+        ? { cinematicAlbumIds: body.cinematicAlbumIds }
+        : {}),
+      ...(body.cinematicLutId !== undefined
+        ? { cinematicLutId: body.cinematicLutId }
         : {}),
     };
 
