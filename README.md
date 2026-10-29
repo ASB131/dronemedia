@@ -6,18 +6,18 @@
 
 <p align="center">
   <strong>Self-hosted library for drone photos, videos, and flight telemetry.</strong><br />
-  Immich-like UX, built for DJI-style workflows — not a general photo app, not a movie server.
+  Immich-like UX, built for DJI-style workflows.
 </p>
 
 ## What it is
 
-Drone Media is a multi-user web app for keeping aerial media organized at home. Import from an SD card or folder, keep MP4 + SRT (+ LRF) grouped together, then browse a timeline, map, and flights with regenerable previews and HLS playback. Mark media public for **Community** profiles — there is no legacy share-link inbox.
+Drone Media is a multi-user web app for aerial media at home. Import from an SD card or folder, keep MP4 + SRT (+ LRF) grouped together, then browse a timeline, map, and flights with regenerable previews and HLS playback. Mark media public for Community profiles.
 
 ## Who it’s for
 
-- Drone pilots who want an Immich-style library aimed at flight media and telemetry
-- Homelabbers running Docker next to Immich / Jellyfin / *arr stacks
-- Small teams or households that need separate users, quotas, and admin tools
+- Drone pilots who want an Immich-like library for flight media and telemetry
+- Homelab users running Docker
+- Households or small teams that need separate users, quotas, and admin tools
 
 ## Screenshots
 
@@ -53,13 +53,13 @@ Multi-clip flights with a bottom media strip, live path map, and altitude teleme
 
 ### Upload
 
-Import from an SD card or drone folder — linked basenames and sequences are grouped before you copy into the library.
+Import from an SD card or drone folder. Linked basenames and sequences are grouped before you copy into the library.
 
 ![Upload and SD import](docs/screenshots/upload.png)
 
 ### Upload progress
 
-A compact upload dock keeps transfers visible while you browse the rest of the library.
+A compact upload dock keeps transfers visible while you browse.
 
 ![Upload dock](docs/screenshots/upload-dock.png)
 
@@ -69,56 +69,34 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 
 ![Processing notifications](docs/screenshots/processing.png)
 
-## At a glance
-
-- Chunked uploads with basename grouping (video + SRT + LRF, hyperlapse / panorama folders)
-- Background upload dock so you can keep browsing while transfers finish
-- Timeline, map, flights, albums, drones, favorites, and bin
-- Stitched panoramas with 360° viewing and compass heading when EXIF/DJI yaw is present
-- Map markers with media-type badges; asset mini-map shows a look-direction cone for photos/panos
-- HLS adaptive playback from cache; **Source** in the player only after a streaming preview exists (download always available)
-- Photo **Web** previews on cache; full originals for download
-- Community profiles and a shared public map
-- Admin: pause/enable heavy jobs (transcoding, panorama stitch) for bulk imports; enabling backfills media still missing those jobs
-- Operator settings editable in **Admin → Settings** (upload limits, HLS ladder, quotas, and more)
-- Admin: users, invites, integrity, storage, backups, failed jobs
-
----
-
-## License
-
-AGPL-3.0 — see [LICENSE](./LICENSE).
-
 ## Features
 
-- **Library** — timeline, map, flights, albums, drones, favorites, bin
-- **Playback** — HLS adaptive streaming (1080p / 1440p / Auto) from regenerable cache; **Source** plays the original from media storage
-- **Photos** — in-app **Web** preview from cache; **Source** / download use full originals
-- **Panoramas** — DJI-style stitch, 360° viewer, heading tape, and map look cone when yaw tags exist
-- **Flights** — grouped clips with shared path map, altitude graph, and per-clip media strip
-- **Community** — discover public profiles and a shared map (`/community`); open media on `/u/{username}`
-- **Admin** — users, invites, integrity, storage report, settings, backups, failed jobs; **Jobs** tab to pause/enable transcoding (and panorama stitch) globally, view all-users queues, and backfill when re-enabled
-- **Upload** — chunked resumable uploads with basename grouping (MP4 + SRT + LRF) and a persistent progress dock
+- **Library**: timeline, map, flights, albums, drones, favorites, bin
+- **Upload**: chunked uploads with basename grouping (MP4 + SRT + LRF) and a progress dock
+- **Playback**: HLS from cache; Source plays the original when allowed
+- **Photos**: Web preview from cache; download uses full originals
+- **Panoramas**: stitch, 360° viewer, heading when EXIF/DJI yaw is present
+- **Flights**: grouped clips with path map, altitude graph, and media strip
+- **Community**: public profiles and a shared map (`/community`, `/u/{username}`)
+- **Admin**: users, invites, settings, integrity, storage, backups, jobs
 
-While transcoding is paused, Live Processing finishes after metadata (no Transcoding spam). Users see deferred items under **Utilities → Jobs** as “Waiting to transcode.” Videos without a streaming preview show a status message instead of playing Source in the player.
-
-There is **no** legacy share-link / “Shared inbox” flow. Visibility for others is via **Community** and assets marked public on your profile.
+While transcoding is paused, Live Processing finishes after metadata. Deferred items show under **Utilities → Jobs**. Videos without a streaming preview show a status message instead of playing Source in the player.
 
 ## Prerequisites
 
-- Docker & Docker Compose (recommended for production)
+- Docker and Docker Compose (recommended)
 - Node.js 22+ (local development only)
 
 ## Quick start (Docker)
 
-Install from **prebuilt images** (same idea as Immich): copy compose + env, pull, start. No source build required on the server.
+Install from prebuilt images. No source build needed on the server.
 
 Images (published when `main` updates):
 
 - `ghcr.io/asb131/dronemedia-app`
 - `ghcr.io/asb131/dronemedia-worker`
 
-1. Copy install files into an empty folder (from this repo or a release):
+1. Copy install files into a folder:
 
    ```bash
    # at minimum:
@@ -129,19 +107,19 @@ Images (published when `main` updates):
    ```
 
 2. Edit **`.env`**:
-   - `AUTH_SECRET` — long random string (required)
-   - `PUBLIC_URL` — URL you open in the browser (e.g. `http://192.168.1.177:3384` or `https://dronemedia.example.com`)
-   - `UPLOAD_LOCATION_*` — host paths for postgres, redis, cache, and media (or edit binds in compose)
+   - `AUTH_SECRET`: long random string (required)
+   - `PUBLIC_URL`: URL you open in the browser (for example `http://192.168.1.177:3384`)
+   - `UPLOAD_LOCATION_*`: host paths for postgres, redis, cache, and media
 
 3. Create the host directories, then pull and start:
 
    ```bash
-   # Example Linux layout — match UPLOAD_LOCATION_* in .env
+   # Example Linux layout (match UPLOAD_LOCATION_* in .env)
    sudo mkdir -p /mnt/ssd1_system/docker/dronemedia/postgres \
      /mnt/ssd1_system/docker/dronemedia/redis \
      /mnt/ssd2_cache/dronemedia/cache \
      /mnt/hdd1_personal/dronemedia/media
-   # Redis official image runs as uid 999 — required or RDB saves fail (MISCONF / login broken)
+   # Redis official image runs as uid 999
    sudo chown -R 999:999 /mnt/ssd1_system/docker/dronemedia/redis
 
    docker compose pull
@@ -152,9 +130,11 @@ Images (published when `main` updates):
 
 **Upgrades:** `docker compose pull && docker compose up -d` (optionally set `APP_VERSION` in `.env` to pin a tag).
 
-**Always run both `app` and `worker`.** Without the worker: no thumbnails, HLS, photo web previews, or telemetry jobs.
+**Always run both `app` and `worker`.** Without the worker you will not get thumbnails, HLS, photo web previews, or telemetry jobs.
 
-If `docker compose pull` fails with unauthorized on GHCR, make the `dronemedia-app` and `dronemedia-worker` packages **public** under the GitHub repo’s Packages settings (first publish may create them as private).
+Default web port is **3384** (container listens on 2283). Postgres and Redis stay internal.
+
+If `docker compose pull` fails with unauthorized on GHCR, make the `dronemedia-app` and `dronemedia-worker` packages **public** under the GitHub repo Packages settings.
 
 ### Useful commands
 
@@ -166,16 +146,6 @@ docker compose pull && docker compose up -d   # upgrade
 docker compose down   # data on bind mounts / volumes is kept
 ```
 
-### Co-hosting with Immich / *arr / Jellyfin
-
-| Service | Host port | Notes |
-|---------|-----------|--------|
-| Immich | **2283** | Leave alone |
-| Drone Media | **3384** → container 2283 | Default in compose |
-| Drone Media Postgres/Redis | *(none)* | Internal only; do not reuse Immich’s DB/Redis |
-
-Point Nginx Proxy Manager (or similar) at `http://HOST:3384` (or the app container on a shared Docker network at port **2283**). For a custom domain, set `PUBLIC_URL=https://your.domain` to match.
-
 ## Storage tiers
 
 | Tier | In-container path | Purpose |
@@ -186,17 +156,15 @@ Point Nginx Proxy Manager (or similar) at `http://HOST:3384` (or the app contain
 | Postgres | `/var/lib/postgresql/data` | PostGIS (bind to SSD) |
 | Redis | `/data` | Sessions, BullMQ queues (bind to SSD; `chown 999:999`) |
 
-If Redis logs show `Failed opening the temp RDB file … Permission denied`, fix host ownership (`chown -R 999:999` on the Redis bind) and restart Redis. Do not leave Redis on an unwritable volume — Auth.js and workers will fail with `MISCONF`.
+If Redis logs show permission errors on the RDB file, fix host ownership (`chown -R 999:999` on the Redis bind) and restart Redis.
 
-Backups: database (`pg_dump` / admin backup) + **media** originals. Cache can be wiped and rebuilt.
-
-Chunked uploads assemble on cache and are moved to media on commit.
+Backups: database (`pg_dump` / admin backup) plus **media** originals. Cache can be wiped and rebuilt.
 
 ## Local development
 
-### Docker from source (this machine)
+### Docker from source
 
-`docker-compose.yml` pulls GHCR images. To **build locally** while developing, use a gitignored override (see `docker-compose.override.example.yml`) or:
+`docker-compose.yml` pulls GHCR images. To build locally:
 
 ```bash
 cp docker-compose.override.example.yml docker-compose.override.yml
@@ -204,7 +172,7 @@ cp docker-compose.override.example.yml docker-compose.override.yml
 docker compose up -d --build
 ```
 
-You can also pass the committed build overlay explicitly:
+Or:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
@@ -223,24 +191,23 @@ npm run dev      # Next.js (default port 2283 locally)
 npm run worker   # BullMQ workers (separate terminal)
 ```
 
-Health: `GET /api/health` (database, Redis, storage).
+Health: `GET /api/health`.
 
 ## Configuration
 
-- **`config.yml`** — operator settings (storage defaults, upload limits, transcoding ladder, quotas, cron)
-- **`.env`** — secrets and overrides (`AUTH_SECRET`, `PUBLIC_URL`, `DATABASE_URL` for local runs)
+- **`config.yml`**: operator settings (storage, upload limits, transcoding, quotas, cron)
+- **`.env`**: secrets and overrides (`AUTH_SECRET`, `PUBLIC_URL`, `DATABASE_URL` for local runs)
 
-`PUBLIC_URL` and `AUTH_TRUST_HOST=true` are required for Auth.js on LAN IP:port access.
+`PUBLIC_URL` and `AUTH_TRUST_HOST=true` are required for Auth.js when using a LAN IP:port.
 
-Docker sets in-container `CACHE_PATH` / `MEDIA_PATH` / `APP_DATA_PATH` to `/data/...`. Edit **host bind mounts** in `docker-compose.yml`, not those env values.
+Docker sets in-container `CACHE_PATH` / `MEDIA_PATH` / `APP_DATA_PATH` to `/data/...`. Edit **host bind mounts**, not those env values.
 
-## Community & profiles
+## Community and profiles
 
-- **`/community`** — profiles list and optional map of public geotagged assets
-- **`/u/{username}`** — public profile / portfolio for assets marked public
-- Account settings control display name and which media appear on Community
+- **`/community`**: profile list and optional map of public geotagged assets
+- **`/u/{username}`**: public profile for assets marked public
 
-Signed-in users browse Community; public profile media is served under `/api/public/...`.
+Signed-in users browse Community. Public profile media is served under `/api/public/...`.
 
 ## Project structure
 
@@ -255,7 +222,7 @@ config.yml         default operator config
 docker-compose.yml production stack
 ```
 
-Media on disk: `MEDIA_PATH/{userId}/{assetId}/{ext}` — display names live in the database only.
+Media on disk: `MEDIA_PATH/{userId}/{assetId}/{ext}`. Display names live in the database only.
 
 ## Database
 
@@ -267,11 +234,11 @@ npm run db:studio     # optional
 
 PostGIS is enabled during migrate (`CREATE EXTENSION IF NOT EXISTS postgis`).
 
-## Backup & admin recovery
+## Backup and admin recovery
 
-- **Database** — admin backup / `pg_dump`; enable scheduled backups in admin settings when ready
-- **Media** — rsync/snapshot of the media bind mount
-- **Cache** — optional; regenerable
+- **Database**: admin backup / `pg_dump`
+- **Media**: rsync or snapshot of the media bind mount
+- **Cache**: optional; regenerable
 
 Reset or grant admin:
 
@@ -286,48 +253,52 @@ Or via Docker:
 docker compose exec app npm run reset-admin -- --username admin --password newpass
 ```
 
+## License
+
+AGPL-3.0. See [LICENSE](./LICENSE).
+
 ## Version
 
 Current release: **1.0.6**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
 
-### v1.0.6 highlights
+### v1.0.6
 
-- Security hardening: DB re-check of approval/role, revoked device sessions enforced, open-redirect fix on login
-- PIN and registration rate limits; share unlock requires `AUTH_SECRET` (no hardcoded fallback)
+- Security hardening: DB re-check of approval/role, revoked sessions enforced, login redirect sanitization
+- PIN and registration rate limits; share unlock requires `AUTH_SECRET`
 - Security headers, tighter middleware static bypass, zip entry name sanitization
-- Anonymous public viewers cannot request Source originals; health endpoint no longer leaks dependency details
+- Anonymous public viewers cannot request Source originals; health endpoint is status/version only
 
-### v1.0.5 highlights
+### v1.0.5
 
-- Immich-style chrome: nav order and selected pill, true black/white theme, header search alignment, letter avatar, storage card
-- Photos timeline: month scrubber, justified same-height rows, small gaps between tiles
-- Map heatmap toggle for all geotagged media
+- Immich-style chrome: nav order and selected pill, black/white theme, header search, letter avatar, storage card
+- Photos timeline: month scrubber, justified rows, small gaps between tiles
+- Map heatmap toggle for geotagged media
 - Cinematic library player (shuffle, web previews, LUT, all / favourites / albums)
 
-### v1.0.4 highlights
+### v1.0.4
 
-- Upload sidecars (SRT/LRF) attach only with the same folder + basename; identical sidecar hashes are not copied onto a second video
-- CLI `npm run repair-cross-attached-sidecars -- --apply` detaches cross-attached SRT/LRF (keeps both MP4s; owner chosen by LRF duration)
+- Upload sidecars (SRT/LRF) attach only with the same folder + basename
+- CLI `npm run repair-cross-attached-sidecars -- --apply` detaches cross-attached SRT/LRF
 
-### v1.0.3 highlights
+### v1.0.3
 
-- Timeline: no visual duplicate tiles on infinite scroll; select all / unselect all in select mode
-- Upload: folder-aware grouping so same `DJI_0420` in different folders stay separate assets; safer sidecar attach when multiple matches exist
-- Dedup: “Possible duplicate” only from primary video/photo hashes (not shared SRT/LRF)
-- Thumbnails: owner check + cache-busting URLs; Utilities actions to clear false duplicate flags and requeue thumbs
+- Timeline: no duplicate tiles on infinite scroll; select all / unselect all
+- Upload: folder-aware grouping; safer sidecar attach
+- Dedup from primary video/photo hashes only
+- Thumbnails: owner check + cache-busting URLs
 
-### v1.0.2 highlights
+### v1.0.2
 
-- Upload staging hygiene: prune empty uploads dirs, admin “Clean upload staging now” with MB freed, failed commits purged in ~2h
-- Jobs page shows cache staging vs library transfer; finalize shows “Moving to library (n/m)”
-- Upload waves cap by file count **or** ~8 GB so huge videos don’t stall small photos
+- Upload staging cleanup and admin “Clean upload staging now”
+- Clearer jobs / finalize status during library transfer
+- Upload waves capped by file count or ~8 GB
 
-### v1.0.1 highlights
+### v1.0.1
 
-- Timeline scroll and per-tile thumbnail reveal; map paths only at close zoom with viewport culling; colocated marker spiderfy
-- Clearer upload assemble/finalize status; download/ETA text wrapping
-- 180° panoramas use the photo Web/Source viewer (360° stays interactive)
-- Admin Source gate (global + per-user; admins always allowed); library + disk storage displays
-- Asset Edit “Refresh data”; Utilities “Clear finished from list” and “Keep both” for duplicates
+- Timeline and map performance polish
+- Clearer upload status; download/ETA wrapping
+- 180° panoramas use the photo Web/Source viewer
+- Admin Source gate; library + disk storage displays
+- Asset refresh and Utilities duplicate helpers
