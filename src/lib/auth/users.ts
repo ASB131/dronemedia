@@ -75,6 +75,33 @@ export async function revokeDbSession(sessionToken: string): Promise<void> {
     .where(eq(sessions.sessionToken, sessionToken));
 }
 
+export async function revokeAllDbSessionsForUser(userId: string): Promise<void> {
+  const db = getWebDb();
+  await db
+    .update(sessions)
+    .set({ revoked: true })
+    .where(eq(sessions.userId, userId));
+}
+
+/** Returns false when the token is missing or revoked. */
+export async function isDbSessionActive(sessionToken: string): Promise<boolean> {
+  const db = getWebDb();
+  const [row] = await db
+    .select({
+      revoked: sessions.revoked,
+      id: sessions.id,
+    })
+    .from(sessions)
+    .where(eq(sessions.sessionToken, sessionToken))
+    .limit(1);
+  if (!row || row.revoked) return false;
+  await db
+    .update(sessions)
+    .set({ lastActiveAt: new Date() })
+    .where(eq(sessions.id, row.id));
+  return true;
+}
+
 export type SetupAdminInput = {
   username: string;
   email: string;

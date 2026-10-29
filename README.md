@@ -288,9 +288,16 @@ docker compose exec app npm run reset-admin -- --username admin --password newpa
 
 ## Version
 
-Current release: **1.0.5**
+Current release: **1.0.6**
 
 `GET /api/health` and the sidebar footer report the running version (`APP_VERSION` / package version).
+
+### v1.0.6 highlights
+
+- Security hardening: DB re-check of approval/role, revoked device sessions enforced, open-redirect fix on login
+- PIN and registration rate limits; share unlock requires `AUTH_SECRET` (no hardcoded fallback)
+- Security headers, tighter middleware static bypass, zip entry name sanitization
+- Anonymous public viewers cannot request Source originals; health endpoint no longer leaks dependency details
 
 ### v1.0.5 highlights
 

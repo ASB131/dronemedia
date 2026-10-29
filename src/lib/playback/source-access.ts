@@ -39,8 +39,8 @@ export async function allowInAppSourceForUserId(
 }
 
 /**
- * Anonymous public viewers inherit the global gate only.
- * Logged-in viewers use their own role/override.
+ * Anonymous public viewers never get Source (original) files.
+ * Logged-in viewers use their own role/override / global gate.
  */
 export async function allowInAppSourceForRequest(options?: {
   userId?: string | null;
@@ -48,6 +48,5 @@ export async function allowInAppSourceForRequest(options?: {
   if (options?.userId) {
     return allowInAppSourceForUserId(options.userId);
   }
-  const config = loadConfig();
-  return config.playback?.allowInAppSource ?? true;
+  return false;
 }

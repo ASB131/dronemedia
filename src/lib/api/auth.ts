@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { auth } from "@/auth";
+import { findUserById } from "@/lib/auth/users";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { reconcileUserStorageUsed } from "@/lib/users/storage-usage";
@@ -19,9 +20,16 @@ export async function requireApprovedSession() {
   if (!session?.user?.id) {
     throw new ApiError(401, "Unauthorized");
   }
-  if (session.user.approvalStatus !== "approved") {
+
+  // Fail closed on stale JWTs: re-read approval/role from the database.
+  const dbUser = await findUserById(session.user.id);
+  if (!dbUser || dbUser.approvalStatus !== "approved") {
     throw new ApiError(403, "Account not approved");
   }
+
+  session.user.role = dbUser.role;
+  session.user.approvalStatus = dbUser.approvalStatus;
+  session.user.username = dbUser.username;
   return session;
 }
 

@@ -22,6 +22,7 @@ declare module "next-auth/jwt" {
     approvalStatus?: "pending" | "approved" | "rejected";
     username?: string;
     sessionToken?: string;
+    sessionCheckedAt?: number;
   }
 }
 

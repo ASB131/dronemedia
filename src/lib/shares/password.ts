@@ -3,7 +3,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 function unlockSecret() {
-  return process.env.AUTH_SECRET ?? "drone-media-dev-secret";
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret) {
+    throw new Error("AUTH_SECRET is required for share unlock cookies");
+  }
+  return secret;
 }
 
 export function shareUnlockCookieName(token: string) {

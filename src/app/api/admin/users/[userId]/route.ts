@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { jsonError, requireAdminSession } from "@/lib/api/auth";
+import { revokeAllDbSessionsForUser } from "@/lib/auth/users";
 import { getWebDb } from "@/lib/db";
 import { auditLogs, users } from "@/lib/db/schema";
 
@@ -82,6 +83,10 @@ export async function PATCH(
     }
 
     await db.update(users).set(updates).where(eq(users.id, userId));
+
+    if (body.approvalStatus === "rejected") {
+      await revokeAllDbSessionsForUser(userId);
+    }
 
     if (body.approvalStatus !== undefined) {
       let actionType: "user.approve" | "user.reject" | "user.disable" =

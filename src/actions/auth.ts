@@ -3,9 +3,16 @@
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 
+import { headers } from "next/headers";
+
 import { signIn } from "@/auth";
 import { hashPassword } from "@/lib/auth/password";
 import { markInviteUsed, validateInviteCode } from "@/lib/auth/invites";
+import {
+  checkRegisterRateLimit,
+  recordRegisterAttempt,
+} from "@/lib/auth/rate-limit";
+import { safeInternalRedirectPath } from "@/lib/auth/safe-redirect";
 import {
   adminExists,
   createFirstAdmin,
@@ -18,6 +25,14 @@ import {
   type AuthFormState,
 } from "@/lib/auth/validators";
 import { loadConfig } from "@/lib/config";
+
+function getClientIp(headerStore: Headers): string {
+  const forwarded = headerStore.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() ?? "unknown";
+  }
+  return headerStore.get("x-real-ip") ?? "unknown";
+}
 
 function formDataToObject(formData: FormData): Record<string, string> {
   return Object.fromEntries(
@@ -79,6 +94,15 @@ export async function registerAction(
   if (!(await adminExists())) {
     redirect("/setup");
   }
+
+  const ip = getClientIp(await headers());
+  const rateLimit = await checkRegisterRateLimit(ip);
+  if (!rateLimit.allowed) {
+    return {
+      error: "Too many registration attempts. Please wait and try again.",
+    };
+  }
+  await recordRegisterAttempt(ip);
 
   const parsed = registerSchema.safeParse(formDataToObject(formData));
   if (!parsed.success) {
@@ -155,11 +179,7 @@ export async function loginAction(
     return { fieldErrors: fieldErrorsFromZod(parsed.error.issues) };
   }
 
-  const callbackUrl = formData.get("callbackUrl");
-  const redirectTo =
-    typeof callbackUrl === "string" && callbackUrl.startsWith("/")
-      ? callbackUrl
-      : "/";
+  const redirectTo = safeInternalRedirectPath(formData.get("callbackUrl"));
 
   try {
     await signIn("credentials", {

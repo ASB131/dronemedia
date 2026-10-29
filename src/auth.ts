@@ -13,9 +13,13 @@ import {
   createDbSession,
   findUserById,
   findUserByUsernameOrEmail,
+  isDbSessionActive,
   revokeDbSession,
 } from "@/lib/auth/users";
 import { loginSchema } from "@/lib/auth/validators";
+
+/** Re-check DB approval/role/session at most once per minute per JWT. */
+const SESSION_REVALIDATE_MS = 60_000;
 
 class RateLimitedSignin extends CredentialsSignin {
   code = "rate_limit";
@@ -92,32 +96,55 @@ const fullConfig: NextAuthConfig = {
         token.approvalStatus = user.approvalStatus;
         token.username = user.name ?? undefined;
         token.sessionToken = crypto.randomUUID();
+        token.sessionCheckedAt = Date.now();
 
         await createDbSession(user.id!, token.sessionToken as string, {
           userAgent: (await headers()).get("user-agent") ?? undefined,
         });
-      } else if (token.sub && !token.role) {
-        // Recover role for older JWTs that never persisted custom claims.
-        const existing = await findUserById(token.sub);
-        if (existing) {
-          token.role = existing.role;
-          token.approvalStatus = existing.approvalStatus;
-          token.username = existing.username;
+        return token;
+      }
+
+      if (!token.sub) return token;
+
+      const checkedAt =
+        typeof token.sessionCheckedAt === "number" ? token.sessionCheckedAt : 0;
+      const stale = Date.now() - checkedAt >= SESSION_REVALIDATE_MS;
+      const missingClaims = !token.role || !token.approvalStatus;
+
+      if (!stale && !missingClaims) {
+        return token;
+      }
+
+      if (typeof token.sessionToken === "string") {
+        const active = await isDbSessionActive(token.sessionToken);
+        if (!active) {
+          return { ...token, sub: undefined, sessionToken: undefined };
         }
       }
 
+      const existing = await findUserById(token.sub);
+      if (!existing || existing.approvalStatus === "rejected") {
+        return { ...token, sub: undefined, sessionToken: undefined };
+      }
+
+      token.role = existing.role;
+      token.approvalStatus = existing.approvalStatus;
+      token.username = existing.username;
+      token.sessionCheckedAt = Date.now();
       return token;
     },
     session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.sub!;
-        session.user.role = token.role as "admin" | "user";
-        session.user.approvalStatus = token.approvalStatus as
-          | "pending"
-          | "approved"
-          | "rejected";
-        session.user.username = token.username as string;
+      if (!token.sub || !session.user) {
+        // JWT invalidated (revoked device / rejected user) → treat as logged out.
+        return { expires: session.expires } as typeof session;
       }
+      session.user.id = token.sub;
+      session.user.role = token.role as "admin" | "user";
+      session.user.approvalStatus = token.approvalStatus as
+        | "pending"
+        | "approved"
+        | "rejected";
+      session.user.username = token.username as string;
       return session;
     },
   },

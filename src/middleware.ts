@@ -19,6 +19,10 @@ const PUBLIC_PREFIXES = [
   "/api/public",
 ];
 
+/** Static asset extensions only — do not skip auth for every path containing ".". */
+const STATIC_FILE_EXT =
+  /\.(?:css|js|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|txt|xml|webmanifest|mp4|webm|m3u8|ts)$/i;
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const session = req.auth;
@@ -26,13 +30,13 @@ export default auth((req) => {
   if (
     PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     pathname.startsWith("/_next") ||
-    pathname.includes(".")
+    STATIC_FILE_EXT.test(pathname)
   ) {
     return NextResponse.next();
   }
 
   if (PUBLIC_PATHS.has(pathname)) {
-    if (session?.user?.approvalStatus === "approved") {
+    if (session?.user?.id && session.user.approvalStatus === "approved") {
       return NextResponse.redirect(new URL("/", req.url));
     }
     return NextResponse.next();
@@ -42,7 +46,7 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
-  if (!session) {
+  if (!session?.user?.id) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);

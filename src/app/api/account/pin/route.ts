@@ -4,6 +4,11 @@ import { z } from "zod";
 
 import { jsonError, requireApprovedSession } from "@/lib/api/auth";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import {
+  checkPinUnlockRateLimit,
+  clearPinUnlockFailures,
+  recordPinUnlockFailure,
+} from "@/lib/auth/rate-limit";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 
@@ -55,10 +60,27 @@ export async function POST(request: Request) {
       if (!user.pinHash) {
         return NextResponse.json({ unlocked: true });
       }
+      const rateLimit = await checkPinUnlockRateLimit(session.user.id);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          {
+            error: "Too many incorrect PIN attempts. Please wait and try again.",
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          },
+          {
+            status: 429,
+            headers: rateLimit.retryAfterSeconds
+              ? { "Retry-After": String(rateLimit.retryAfterSeconds) }
+              : undefined,
+          },
+        );
+      }
       const valid = await verifyPassword(body.pin, user.pinHash);
       if (!valid) {
+        await recordPinUnlockFailure(session.user.id);
         return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
       }
+      await clearPinUnlockFailures(session.user.id);
       return NextResponse.json({ unlocked: true });
     }
 

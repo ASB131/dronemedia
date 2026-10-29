@@ -14,14 +14,14 @@ export async function GET() {
     getStorageAdapter().healthCheck(),
   ]);
 
-  const checks = { database, redis, storage };
-  const healthy = Object.values(checks).every((c) => c.ok);
+  const healthy = [database, redis, storage].every((c) => c.ok);
 
+  // Keep the public body minimal (status + version) for Docker healthchecks.
+  // Detailed check payloads stay out of anonymous responses.
   return NextResponse.json(
     {
       status: healthy ? "ok" : "degraded",
       version: APP_VERSION,
-      checks,
       timestamp: new Date().toISOString(),
     },
     { status: healthy ? 200 : 503 },

@@ -64,8 +64,11 @@ export async function POST(request: Request) {
           { status: 413 },
         );
       }
+      const safeName =
+        asset.displayName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() ||
+        "asset";
       entries.push({
-        name: `${asset.displayName}.${asset.mainFileExt}`,
+        name: `${safeName}.${asset.mainFileExt}`,
         key,
         size,
       });
