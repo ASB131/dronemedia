@@ -59,7 +59,8 @@ import type {
   TelemetrySeriesPoint,
 } from "@/lib/assets/telemetry";
 import { colorModeFromMediaMetadata } from "@/lib/luts/color-profile";
-import { basemapTileUrl } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 import type { MapAssetDto } from "@/lib/map/queries";
 import type { PublicFeaturedAlbumDto } from "@/lib/profiles/portfolio";
 import type {
@@ -213,6 +214,7 @@ export function PublicProfileView({ username }: { username: string }) {
   const [allowInAppSource, setAllowInAppSource] = useState(true);
   const playbackPrefs = usePlaybackPreferences();
   const mapTheme = useMapTheme();
+  const basemap = useBasemap();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   const previewCursor = useTelemetryCursor(previewSeries, previewTime);
@@ -422,7 +424,8 @@ export function PublicProfileView({ username }: { username: string }) {
         attributionControl: false,
       });
       mapInstanceRef.current = map;
-      L.tileLayer(basemapTileUrl(mapTheme), {
+      L.tileLayer(basemapUrlForTheme(basemap, mapTheme), {
+        attribution: basemap.attribution,
         maxZoom: 19,
       }).addTo(map);
 

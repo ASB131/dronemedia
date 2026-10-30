@@ -11,7 +11,8 @@ import {
   AUTO_EXPAND_ZOOM,
   layoutColocatedPositions,
 } from "@/lib/map/colocated-layout";
-import { basemapTileUrl } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 import { thumbnailMarkerHtml as buildThumbnailMarkerHtml } from "@/lib/map/marker-html";
 import type {
   CommunityMapAssetDto,
@@ -75,6 +76,7 @@ export function CommunityView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mapTheme = useMapTheme();
+  const basemap = useBasemap();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMap | null>(null);
 
@@ -145,7 +147,10 @@ export function CommunityView() {
         attributionControl: false,
       });
       mapInstanceRef.current = map;
-      L.tileLayer(basemapTileUrl(mapTheme), { maxZoom: 19 }).addTo(map);
+      L.tileLayer(basemapUrlForTheme(basemap, mapTheme), {
+        attribution: basemap.attribution,
+        maxZoom: 19,
+      }).addTo(map);
 
       const bounds: Array<[number, number]> = [];
       const clusterGroup = L.markerClusterGroup({

@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMapTheme } from "@/hooks/use-map-theme";
 import { pathColorForIndex } from "@/lib/map/path-colors";
 import { prepareSmoothPath } from "@/lib/map/path-smooth";
-import { basemapAttribution, basemapTileUrl } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 import type { LineStringGeoJson } from "@/lib/assets/telemetry";
 
 export type FlightPathSegment = {
@@ -175,6 +176,7 @@ export function FlightPathPreview({
   className?: string;
 }) {
   const theme = useMapTheme();
+  const basemap = useBasemap();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<import("leaflet").Map | null>(null);
   const markerRef = useRef<import("leaflet").Marker | null>(null);
@@ -226,8 +228,8 @@ export function FlightPathPreview({
         markerZoomAnimation: false,
       }).setView(seed?.center ?? [0, 0], seed?.zoom ?? 2);
 
-      tileLayerRef.current = L.tileLayer(basemapTileUrl(theme), {
-        attribution: basemapAttribution(),
+      tileLayerRef.current = L.tileLayer(basemapUrlForTheme(basemap, theme), {
+        attribution: basemap.attribution,
         maxZoom: 20,
       }).addTo(map);
 
@@ -280,11 +282,11 @@ export function FlightPathPreview({
     if (tileLayerRef.current) {
       map.removeLayer(tileLayerRef.current);
     }
-    tileLayerRef.current = L.tileLayer(basemapTileUrl(theme), {
-      attribution: basemapAttribution(),
+    tileLayerRef.current = L.tileLayer(basemapUrlForTheme(basemap, theme), {
+      attribution: basemap.attribution,
       maxZoom: 20,
     }).addTo(map);
-  }, [theme, mapReady]);
+  }, [theme, mapReady, basemap]);
 
   // Draw / update path segments once the map exists
   useEffect(() => {

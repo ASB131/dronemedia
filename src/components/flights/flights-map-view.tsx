@@ -10,11 +10,9 @@ import {
   AUTO_EXPAND_ZOOM,
   layoutColocatedPositions,
 } from "@/lib/map/colocated-layout";
-import {
-  basemapAttribution,
-  basemapTileUrl,
-  readDocumentMapTheme,
-} from "@/lib/map/tiles";
+import { readDocumentMapTheme } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 import { cn } from "@/lib/utils";
 
 export type FlightsMapCamera = {
@@ -94,6 +92,7 @@ export function FlightsMapView({
 }) {
   const router = useRouter();
   const theme = useMapTheme();
+  const basemap = useBasemap();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,10 +137,13 @@ export function FlightsMapView({
     if (tileLayerRef.current) {
       map.removeLayer(tileLayerRef.current);
     }
-    tileLayerRef.current = L.tileLayer(basemapTileUrl(nextTheme), {
-      attribution: basemapAttribution(),
-      maxZoom: 20,
-    }).addTo(map);
+    tileLayerRef.current = L.tileLayer(
+      basemapUrlForTheme(basemap, nextTheme),
+      {
+        attribution: basemap.attribution,
+        maxZoom: 20,
+      },
+    ).addTo(map);
   }
 
   useEffect(() => {
@@ -285,7 +287,7 @@ export function FlightsMapView({
 
   useEffect(() => {
     applyThemeTiles();
-  }, [theme]);
+  }, [theme, basemap]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;

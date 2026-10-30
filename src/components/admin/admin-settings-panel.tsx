@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { invalidateBasemapCache } from "@/hooks/use-basemap";
 
 type SettingsView = {
   server: { host: string; port: number; publicUrl: string };
@@ -58,6 +59,11 @@ type SettingsView = {
     mediaPath: string;
     adapter: string;
   };
+  map: {
+    provider: "carto" | "maptiler" | "osm";
+    apiKeyConfigured: boolean;
+    apiKeyHint: string | null;
+  };
 };
 
 function gbFromBytes(bytes: number) {
@@ -97,6 +103,10 @@ export function AdminSettingsPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mapProvider, setMapProvider] = useState<SettingsView["map"]["provider"]>(
+    "carto",
+  );
+  const [mapApiKey, setMapApiKey] = useState("");
 
   function applyLocal(view: SettingsView) {
     setSettings(view);
@@ -128,6 +138,8 @@ export function AdminSettingsPanel() {
       nextConcurrency[key] = String(value);
     }
     setConcurrencyDraft(nextConcurrency);
+    setMapProvider(view.map?.provider ?? "carto");
+    setMapApiKey("");
   }
 
   useEffect(() => {
@@ -137,9 +149,10 @@ export function AdminSettingsPanel() {
         setError("Failed to load settings");
         return;
       }
-      const payload = (await response.json()) as { settings: SettingsView };
-      applyLocal(payload.settings);
-    })();
+    const payload = (await response.json()) as { settings: SettingsView };
+    applyLocal(payload.settings);
+    invalidateBasemapCache();
+  })();
   }, []);
 
   async function save(patch: Record<string, unknown>) {
@@ -161,7 +174,8 @@ export function AdminSettingsPanel() {
     }
     const payload = (await response.json()) as { settings: SettingsView };
     applyLocal(payload.settings);
-    setMessage("Settings saved to config.yml (app may need restart for some values)");
+    invalidateBasemapCache();
+    setMessage("Settings saved to config.yml (map tiles refresh on next page load)");
   }
 
   if (!settings && !error) {
@@ -199,6 +213,78 @@ export function AdminSettingsPanel() {
           >
             Save URL
           </Button>
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border p-4">
+        <h2 className="text-sm font-semibold">Map basemap</h2>
+        <p className="text-xs text-muted-foreground">
+          CARTO and MapTiler need a free API key. Without one, maps use
+          OpenStreetMap (you may see “API key required” on CARTO until a key is
+          saved). Keys are stored in config.yml on the server.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            Provider
+            <select
+              className="mt-1 block h-9 min-w-[10rem] rounded-md border border-input bg-background px-2"
+              value={mapProvider}
+              onChange={(event) =>
+                setMapProvider(
+                  event.target.value as SettingsView["map"]["provider"],
+                )
+              }
+            >
+              <option value="carto">CARTO (recommended)</option>
+              <option value="maptiler">MapTiler</option>
+              <option value="osm">OpenStreetMap only</option>
+            </select>
+          </label>
+          <label className="min-w-[16rem] flex-1 text-sm">
+            API key
+            <Input
+              className="mt-1 font-mono text-xs"
+              type="password"
+              autoComplete="off"
+              placeholder={
+                settings.map.apiKeyConfigured
+                  ? `Configured ${settings.map.apiKeyHint ?? ""} — paste to replace`
+                  : "Paste CARTO or MapTiler key"
+              }
+              value={mapApiKey}
+              onChange={(event) => setMapApiKey(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              void save({
+                map: {
+                  provider: mapProvider,
+                  ...(mapApiKey.trim() ? { apiKey: mapApiKey.trim() } : {}),
+                },
+              })
+            }
+          >
+            Save map settings
+          </Button>
+          {settings.map.apiKeyConfigured ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void save({
+                  map: { provider: mapProvider, clearApiKey: true },
+                })
+              }
+            >
+              Remove API key
+            </Button>
+          ) : null}
         </div>
       </section>
 

@@ -5,7 +5,8 @@ import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useMapTheme } from "@/hooks/use-map-theme";
-import { basemapTileUrl } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 
 const DEFAULT_CENTER = { lat: 51.5, lng: -0.12 };
 
@@ -25,6 +26,7 @@ export function SetLocationModal({
   onClear: () => void;
 }) {
   const mapTheme = useMapTheme();
+  const basemap = useBasemap();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<{
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,8 +61,8 @@ export function SetLocationModal({
         attributionControl: false,
       }).setView([start.lat, start.lng], initial ? 16 : 6);
 
-      L.tileLayer(basemapTileUrl(mapTheme), {
-        attribution: "",
+      L.tileLayer(basemapUrlForTheme(basemap, mapTheme), {
+        attribution: basemap.attribution,
         maxZoom: 20,
       }).addTo(map);
 

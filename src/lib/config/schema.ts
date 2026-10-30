@@ -155,6 +155,16 @@ export const configSchema = z.object({
       allowInAppSource: z.boolean().default(true),
     })
     .default({ allowInAppSource: true }),
+  map: z
+    .object({
+      /** carto and maptiler require apiKey; osm does not. */
+      provider: z.enum(["carto", "maptiler", "osm"]).default("carto"),
+      apiKey: z.string().default(""),
+    })
+    .default({
+      provider: "carto",
+      apiKey: "",
+    }),
   theme: z.object({
     default: z.enum(["light", "dark", "system"]).default("system"),
     accent: z

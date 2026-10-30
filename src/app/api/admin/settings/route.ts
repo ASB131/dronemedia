@@ -142,6 +142,13 @@ const patchSchema = z.object({
       allowInAppSource: z.boolean().optional(),
     })
     .optional(),
+  map: z
+    .object({
+      provider: z.enum(["carto", "maptiler", "osm"]).optional(),
+      apiKey: z.string().optional(),
+      clearApiKey: z.boolean().optional(),
+    })
+    .optional(),
   auth: z
     .object({
       login: z

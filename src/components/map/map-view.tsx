@@ -35,7 +35,8 @@ import {
   layoutColocatedPositions,
 } from "@/lib/map/colocated-layout";
 import { prepareSmoothPath } from "@/lib/map/path-smooth";
-import { basemapTileUrl } from "@/lib/map/tiles";
+import { basemapUrlForTheme } from "@/lib/map/basemap";
+import { useBasemap } from "@/hooks/use-basemap";
 import type { MapAssetDto, MapFlightPathDto } from "@/lib/map/queries";
 import { thumbnailMarkerHtml as buildThumbnailMarkerHtml } from "@/lib/map/marker-html";
 import { MapShellSkeleton } from "@/components/ui/skeletons";
@@ -129,6 +130,8 @@ export function MapView() {
     () => undefined,
   );
   const mapTheme = useMapTheme();
+  const basemap = useBasemap();
+  const basemapTileUrl = basemapUrlForTheme(basemap, mapTheme);
   const [assets, setAssets] = useState<MapAssetDto[]>([]);
   const [flights, setFlights] = useState<MapFlightPathDto[]>([]);
   const [showPaths, setShowPaths] = useState(true);
@@ -397,8 +400,8 @@ export function MapView() {
         zoomControl: true,
         attributionControl: false,
       }).setView([seedLat, seedLng], 12);
-      tileLayerRef.current = L.tileLayer(basemapTileUrl(mapTheme), {
-        attribution: "",
+      tileLayerRef.current = L.tileLayer(basemapTileUrl, {
+        attribution: basemap.attribution,
         maxZoom: 20,
       }).addTo(map);
 
@@ -479,11 +482,11 @@ export function MapView() {
     if (tileLayerRef.current) {
       map.removeLayer(tileLayerRef.current);
     }
-    tileLayerRef.current = L.tileLayer(basemapTileUrl(mapTheme), {
-      attribution: "",
+    tileLayerRef.current = L.tileLayer(basemapTileUrl, {
+      attribution: basemap.attribution,
       maxZoom: 20,
     }).addTo(map);
-  }, [mapTheme]);
+  }, [basemap, basemapTileUrl, mapTheme]);
 
   // Sync asset markers (also re-layouts on zoom via zoomend in initMap).
   useEffect(() => {
@@ -633,6 +636,12 @@ export function MapView() {
                     : ""
                 }`}
           </p>
+          {basemap.usingFallback ? (
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+              Basemap API key missing — using OpenStreetMap. Add a CARTO or
+              MapTiler key in Admin → Settings → Map.
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex overflow-hidden rounded-full border border-border text-xs font-medium">

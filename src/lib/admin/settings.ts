@@ -31,6 +31,13 @@ export function getAdminSettingsView() {
     nightly: config.nightly,
     jobs: config.jobs,
     playback: config.playback,
+    map: {
+      provider: config.map.provider,
+      apiKeyConfigured: Boolean(config.map.apiKey?.trim()),
+      apiKeyHint: config.map.apiKey?.trim()
+        ? `…${config.map.apiKey.trim().slice(-4)}`
+        : null,
+    },
     theme: config.theme,
     versionCheck: config.versionCheck,
     backup: config.backup,
@@ -76,6 +83,12 @@ export type AdminSettingsPatch = {
     };
   };
   playback?: { allowInAppSource?: boolean };
+  map?: {
+    provider?: AppConfig["map"]["provider"];
+    /** Set or replace the basemap API key (never returned in GET). */
+    apiKey?: string;
+    clearApiKey?: boolean;
+  };
   theme?: { default?: AppConfig["theme"]["default"]; accent?: string };
   backup?: {
     enabled?: boolean;
@@ -114,7 +127,20 @@ export function patchAdminSettings(patch: AdminSettingsPatch) {
   >;
 
   const merged = structuredClone(raw);
-  deepMerge(merged, patch as Record<string, unknown>);
+  const { map: mapPatch, ...restPatch } = patch;
+  if (mapPatch) {
+    const mapObj = {
+      ...((merged.map ?? {}) as Record<string, unknown>),
+    };
+    if (mapPatch.provider) mapObj.provider = mapPatch.provider;
+    if (mapPatch.clearApiKey) {
+      mapObj.apiKey = "";
+    } else if (mapPatch.apiKey?.trim()) {
+      mapObj.apiKey = mapPatch.apiKey.trim();
+    }
+    merged.map = mapObj;
+  }
+  deepMerge(merged, restPatch as Record<string, unknown>);
   const parsed = configSchema.parse(merged);
 
   fs.writeFileSync(

@@ -133,6 +133,12 @@ jobs:
     webTranscoding: true
     panoramaStitch: true
 
+map:
+  # carto | maptiler require apiKey (free tier at carto.com / maptiler.com).
+  # Without a key, maps fall back to OpenStreetMap tiles.
+  provider: carto
+  apiKey: ""
+
 theme:
   default: system # light | dark | system
   accent: "#4250AF"

@@ -34,6 +34,11 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   if (process.env.REDIS_URL) redis.url = process.env.REDIS_URL;
   merged.redis = redis;
 
+  const map = (merged.map ?? {}) as Record<string, unknown>;
+  if (process.env.MAP_API_KEY) map.apiKey = process.env.MAP_API_KEY;
+  if (process.env.MAP_PROVIDER) map.provider = process.env.MAP_PROVIDER;
+  merged.map = map;
+
   return merged;
 }
 
