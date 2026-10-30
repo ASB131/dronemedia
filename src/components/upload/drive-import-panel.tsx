@@ -742,9 +742,22 @@ export function DriveImportPanel({
       ) : null}
 
       {error ? (
-        <p className="whitespace-pre-wrap rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-destructive/10 px-3 py-2">
+          <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setError(null);
+              if (root) void onRescan();
+              else void onSelectDrive();
+            }}
+          >
+            <RefreshCw className="size-3.5" />
+            Try again
+          </Button>
+        </div>
       ) : null}
       {message ? (
         <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">

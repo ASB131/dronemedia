@@ -1122,5 +1122,38 @@ export async function commitUploadBatch(batchId: string, userId: string) {
     );
   }
 
-  return { batchId, assets: createdAssets, warnings };
+  const uniqueAssetIds = [...new Set(createdAssets.map((row) => row.assetId))];
+  const assetMeta = new Map<
+    string,
+    { displayName: string; capturedAt: string | null }
+  >();
+  if (uniqueAssetIds.length > 0) {
+    const metaRows = await db
+      .select({
+        id: assets.id,
+        displayName: assets.displayName,
+        capturedAt: sql<Date | null>`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal})`,
+      })
+      .from(assets)
+      .where(inArray(assets.id, uniqueAssetIds));
+    for (const row of metaRows) {
+      assetMeta.set(row.id, {
+        displayName: row.displayName,
+        capturedAt: row.capturedAt ? row.capturedAt.toISOString() : null,
+      });
+    }
+  }
+
+  return {
+    batchId,
+    assets: createdAssets.map((row) => {
+      const meta = assetMeta.get(row.assetId);
+      return {
+        ...row,
+        displayName: meta?.displayName ?? null,
+        capturedAt: meta?.capturedAt ?? null,
+      };
+    }),
+    warnings,
+  };
 }

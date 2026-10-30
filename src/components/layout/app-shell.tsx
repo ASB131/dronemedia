@@ -267,9 +267,14 @@ export function AppShell({
             <Link
               href="/upload"
               aria-label="Upload"
-              className="inline-flex h-11 items-center gap-2 rounded-full px-2 text-sm font-medium text-foreground hover:bg-muted sm:px-3"
+              className={cn(
+                "inline-flex h-10 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-colors sm:h-11 sm:px-3",
+                pathname === "/upload" || pathname.startsWith("/upload/")
+                  ? "bg-primary/15 text-primary"
+                  : "text-foreground hover:bg-muted",
+              )}
             >
-              <CloudUpload className="size-5" />
+              <CloudUpload className="size-5 shrink-0" />
               <span className="hidden sm:inline">Upload</span>
             </Link>
             <NotificationBell />

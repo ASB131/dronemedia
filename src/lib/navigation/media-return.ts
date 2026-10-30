@@ -76,6 +76,15 @@ export function clearTimelineScrollPosition(favoritesOnly: boolean) {
   }
 }
 
+/** After import, open the home timeline scrolled to a new asset. */
+export function primeTimelineFocusAfterImport(assetId: string) {
+  saveTimelineScrollPosition({
+    scrollTop: 0,
+    focusAssetId: assetId,
+    favoritesOnly: false,
+  });
+}
+
 const FLIGHTS_VIEW_KEY = "dm-flights-view";
 
 export type FlightsViewState = {

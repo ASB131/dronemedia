@@ -30,7 +30,6 @@ import { colorModeFromMediaMetadata } from "@/lib/luts/color-profile";
 import {
   AUTO_EXPAND_ZOOM,
   COLOCATED_METERS,
-  DISABLE_CLUSTERING_ZOOM,
   PATH_MIN_ZOOM,
   distanceMeters,
   layoutColocatedPositions,
@@ -407,10 +406,10 @@ export function MapView() {
       // individually (with co-located pins fanned out) so each is clickable.
       clusterRef.current = L.markerClusterGroup({
         showCoverageOnHover: false,
-        maxClusterRadius: 56,
+        maxClusterRadius: 52,
         spiderfyOnMaxZoom: true,
         zoomToBoundsOnClick: true,
-        disableClusteringAtZoom: DISABLE_CLUSTERING_ZOOM,
+        disableClusteringAtZoom: AUTO_EXPAND_ZOOM,
         spiderfyDistanceMultiplier: 3.2,
         spiderLegPolylineOptions: {
           weight: 1.5,
@@ -636,7 +635,7 @@ export function MapView() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex overflow-hidden rounded-full border border-border text-xs">
+          <div className="flex overflow-hidden rounded-full border border-border text-xs font-medium">
             {(
               [
                 ["all", "All"],
@@ -647,11 +646,36 @@ export function MapView() {
               <button
                 key={value}
                 type="button"
-                onClick={() => setTypeFilter(value)}
+                onClick={() => {
+                  setShowHeatmap(false);
+                  setTypeFilter(value);
+                }}
                 className={cn(
-                  "px-2.5 py-1.5",
-                  typeFilter === value
+                  "px-2.5 py-1.5 transition-colors",
+                  !showHeatmap && typeFilter === value
                     ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex overflow-hidden rounded-full border border-border text-xs font-medium">
+            {(
+              [
+                [false, "Markers"],
+                [true, "Heatmap"],
+              ] as const
+            ).map(([heatmap, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setShowHeatmap(heatmap)}
+                className={cn(
+                  "px-2.5 py-1.5 transition-colors",
+                  showHeatmap === heatmap
+                    ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -663,21 +687,14 @@ export function MapView() {
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
+                className="size-3.5 accent-primary"
                 checked={showPaths}
                 onChange={(event) => setShowPaths(event.target.checked)}
               />
               Paths
-              <span className="text-[10px] opacity-70">(close zoom)</span>
+              <span className="text-[10px] opacity-70">zoom {PATH_MIN_ZOOM}+</span>
             </label>
           ) : null}
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showHeatmap}
-              onChange={(event) => setShowHeatmap(event.target.checked)}
-            />
-            Heatmap
-          </label>
         </div>
       </div>
 

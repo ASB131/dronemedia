@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { createClientId } from "@/lib/id";
+import { primeTimelineFocusAfterImport } from "@/lib/navigation/media-return";
 import {
   commitUploadBatch,
   detectMissingLinkedFiles,
@@ -35,6 +36,12 @@ export type CommitProgress = {
   total: number;
 };
 
+export type ImportHighlight = {
+  assetId: string;
+  displayName: string;
+  capturedAt: string | null;
+};
+
 type UploadStore = {
   batch: UploadBatchState;
   pendingFiles: File[];
@@ -46,15 +53,18 @@ type UploadStore = {
   notice: string | null;
   waveInfo: UploadWaveInfo | null;
   commitProgress: CommitProgress | null;
+  importHighlight: ImportHighlight | null;
   setDockExpanded: (expanded: boolean) => void;
   setDockDismissed: (dismissed: boolean) => void;
   setBulkMode: (bulkMode: boolean) => void;
   setNotice: (notice: string | null) => void;
   setSoftPaused: (paused: boolean) => void;
+  clearImportHighlight: () => void;
   queueFiles: (incoming: File[]) => void;
   clearCompleted: () => void;
   reset: () => void;
   cancelActive: () => void;
+  retryFailed: () => void;
 };
 
 const initialBatch: UploadBatchState = {
@@ -281,7 +291,28 @@ async function runWave(files: File[]) {
       try {
         const commitResult = (await commitUploadBatch(batchId)) as {
           warnings?: string[];
+          assets?: Array<{
+            assetId: string;
+            displayName?: string | null;
+            capturedAt?: string | null;
+          }>;
         };
+        let importHighlight: ImportHighlight | null = null;
+        const imported = commitResult.assets ?? [];
+        if (imported.length > 0) {
+          const sorted = [...imported].sort((a, b) => {
+            const ta = a.capturedAt ? new Date(a.capturedAt).getTime() : 0;
+            const tb = b.capturedAt ? new Date(b.capturedAt).getTime() : 0;
+            return tb - ta;
+          });
+          const top = sorted[0]!;
+          importHighlight = {
+            assetId: top.assetId,
+            displayName: top.displayName ?? "New import",
+            capturedAt: top.capturedAt ?? null,
+          };
+          primeTimelineFocusAfterImport(top.assetId);
+        }
         useUploadStore.setState((state) => ({
           batch: {
             ...state.batch,
@@ -298,6 +329,7 @@ async function runWave(files: File[]) {
             ),
           },
           commitProgress: null,
+          importHighlight,
           notice:
             commitResult.warnings && commitResult.warnings.length > 0
               ? commitResult.warnings.join(" · ")
@@ -456,10 +488,12 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
   notice: null,
   waveInfo: null,
   commitProgress: null,
+  importHighlight: null,
   setDockExpanded: (expanded) => set({ dockExpanded: expanded }),
   setDockDismissed: (dismissed) => set({ dockDismissed: dismissed }),
   setBulkMode: (bulkMode) => set({ bulkMode }),
   setNotice: (notice) => set({ notice }),
+  clearImportHighlight: () => set({ importHighlight: null }),
   setSoftPaused: (paused) => {
     set({ softPaused: paused });
     if (!paused) {
@@ -519,6 +553,7 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
         notice: null,
         waveInfo: null,
         commitProgress: null,
+        importHighlight: null,
         dockDismissed: true,
       };
     });
@@ -543,12 +578,41 @@ export const useUploadStore = create<UploadStore>((set, get) => ({
       notice: null,
       waveInfo: null,
       commitProgress: null,
+      importHighlight: null,
       softPaused: false,
       dockDismissed: true,
     });
   },
   cancelActive: () => {
     fileAbortController?.abort();
+  },
+  retryFailed: () => {
+    const state = get();
+    const failed = state.batch.files.filter((file) => file.status === "error");
+    if (failed.length === 0) return;
+    stopWaves = false;
+    const retryFiles = failed.map((file) => file.file);
+    const remaining = state.batch.files.filter((file) => file.status !== "error");
+    const stillActive = remaining.some(
+      (file) =>
+        file.status === "queued" ||
+        file.status === "uploading" ||
+        file.status === "assembling" ||
+        file.status === "complete",
+    );
+    set({
+      batch: {
+        ...state.batch,
+        files: stillActive ? remaining : [],
+        status: stillActive ? state.batch.status : "idle",
+        error: undefined,
+      },
+      pendingFiles: mergeFiles(retryFiles, state.pendingFiles),
+      notice: `Retrying ${retryFiles.length} failed file${retryFiles.length === 1 ? "" : "s"}…`,
+      dockDismissed: false,
+      dockExpanded: true,
+    });
+    if (!uploading) scheduleStart(400);
   },
 }));
 

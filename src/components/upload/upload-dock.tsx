@@ -8,6 +8,7 @@ import {
   Loader2,
   Pause,
   Play,
+  RefreshCw,
   Upload,
   X,
 } from "lucide-react";
@@ -59,6 +60,9 @@ export function UploadDock() {
   const clearCompleted = useUploadStore((s) => s.clearCompleted);
   const cancelActive = useUploadStore((s) => s.cancelActive);
   const reset = useUploadStore((s) => s.reset);
+  const retryFailed = useUploadStore((s) => s.retryFailed);
+  const importHighlight = useUploadStore((s) => s.importHighlight);
+  const clearImportHighlight = useUploadStore((s) => s.clearImportHighlight);
 
   const active =
     isUploadActive(batch.status) ||
@@ -200,6 +204,23 @@ export function UploadDock() {
                 {batch.error}
               </p>
             ) : null}
+            {importHighlight ? (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2">
+                <p className="text-xs font-medium text-foreground">
+                  Added to library
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {importHighlight.displayName}
+                </p>
+                <Link
+                  href="/"
+                  className="mt-1.5 inline-block text-[11px] font-medium text-primary hover:underline"
+                  onClick={() => clearImportHighlight()}
+                >
+                  View on timeline
+                </Link>
+              </div>
+            ) : null}
             {batch.files.map((file) => (
               <div
                 key={file.localId}
@@ -273,14 +294,26 @@ export function UploadDock() {
                   </Button>
                 </>
               ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => reset()}
-                >
-                  Clear
-                </Button>
+                <>
+                  {failed.length > 0 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => retryFailed()}
+                    >
+                      <RefreshCw className="size-3.5" />
+                      Retry failed
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => reset()}
+                  >
+                    Clear
+                  </Button>
+                </>
               )}
               <Link
                 href="/upload"

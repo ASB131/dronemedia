@@ -156,6 +156,7 @@ function AssetTile({
             )}
             loading="lazy"
             decoding="async"
+            fetchPriority="low"
             onLoad={() => setThumbLoaded(true)}
             onError={() => setThumbFailed(true)}
           />
@@ -511,7 +512,7 @@ export function TimelineView({
       );
       return 36 + justifiedRowsHeight(rows, TIMELINE_TILE_GAP);
     },
-    overscan: 8,
+    overscan: 12,
   });
 
   // Re-measure when column count changes so scroll positions stay accurate.
@@ -975,22 +976,30 @@ export function TimelineView({
       ) : null}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {(stickyHeader.year ||
-          stickyHeader.monthLabel ||
-          stickyHeader.dayLabel) && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-border/70 bg-background/95 px-3 py-2 backdrop-blur-md">
-            {stickyHeader.year ? (
+        {(stickyHeader.dayLabel ||
+          (!scrubVisible &&
+            (stickyHeader.year || stickyHeader.monthLabel))) && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-border/70 bg-background/95 px-3 py-2 pr-14 backdrop-blur-md">
+            {!scrubVisible && stickyHeader.year ? (
               <p className="text-2xl font-semibold tracking-tight">
                 {stickyHeader.year}
               </p>
             ) : null}
-            {stickyHeader.monthLabel ? (
+            {!scrubVisible && stickyHeader.monthLabel ? (
               <p className="text-sm font-medium text-primary">
                 {stickyHeader.monthLabel}
               </p>
             ) : null}
             {stickyHeader.dayLabel ? (
-              <p className="text-xs text-muted-foreground">
+              <p
+                className={cn(
+                  "text-xs text-muted-foreground",
+                  !scrubVisible &&
+                    (stickyHeader.year || stickyHeader.monthLabel) &&
+                    "mt-0.5",
+                  scrubVisible && "text-sm font-medium text-foreground",
+                )}
+              >
                 {stickyHeader.dayLabel}
               </p>
             ) : null}

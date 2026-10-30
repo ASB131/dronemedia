@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DriveImportPanel } from "@/components/upload/drive-import-panel";
+import { UploadGroupPreviewList } from "@/components/upload/upload-group-preview";
+import { buildUploadGroupPreview } from "@/lib/upload/preview-groups";
 import type { MissionTemplateDto } from "@/lib/missions/queries";
 import {
   formatUploadBytes,
@@ -73,6 +75,7 @@ export function UploadZone() {
   const setNotice = useUploadStore((s) => s.setNotice);
   const setBulkMode = useUploadStore((s) => s.setBulkMode);
   const reset = useUploadStore((s) => s.reset);
+  const retryFailed = useUploadStore((s) => s.retryFailed);
 
   const [isDragging, setIsDragging] = useState(false);
   const [templates, setTemplates] = useState<MissionTemplateDto[]>([]);
@@ -224,6 +227,20 @@ export function UploadZone() {
       batch.files.length
     );
   }, [batch.files]);
+
+  const groupPreview = useMemo(() => {
+    const seen = new Set<string>();
+    const combined: File[] = [];
+    for (const file of [...pendingFiles, ...batch.files.map((row) => row.file)]) {
+      const key = `${file.name}::${file.size}::${file.lastModified}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(file);
+    }
+    return buildUploadGroupPreview(combined);
+  }, [batch.files, pendingFiles]);
+
+  const failedCount = batch.files.filter((file) => file.status === "error").length;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
@@ -388,6 +405,11 @@ export function UploadZone() {
         </p>
       ) : null}
 
+      {groupPreview.length > 0 &&
+      (pendingFiles.length > 0 || batch.status !== "idle") ? (
+        <UploadGroupPreviewList groups={groupPreview} />
+      ) : null}
+
       {batch.status !== "idle" ? (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
@@ -409,7 +431,16 @@ export function UploadZone() {
           {batch.files.map((file) => (
             <UploadFileRow key={file.localId} file={file} />
           ))}
-          {batch.status === "done" || batch.status === "error" ? (
+          {failedCount > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="default" onClick={() => retryFailed()}>
+                Retry {failedCount} failed
+              </Button>
+              <Button type="button" variant="outline" onClick={() => reset()}>
+                Clear list
+              </Button>
+            </div>
+          ) : batch.status === "done" || batch.status === "error" ? (
             <Button
               type="button"
               variant="outline"

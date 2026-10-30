@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type AuditLog = {
   id: string;
@@ -258,6 +259,76 @@ export function AdminCachePanel() {
   );
 }
 
+type LibraryHealth = {
+  pipelineBacklog: number;
+  stuckActiveJobs: number;
+  failedJobs: number;
+  missingHlsVideos: number;
+  thumbnailIssues: number;
+};
+
+function AdminLibraryHealthStrip() {
+  const [health, setHealth] = useState<LibraryHealth | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const response = await fetch("/api/admin/library-health");
+      if (!response.ok) return;
+      setHealth((await response.json()) as LibraryHealth);
+    })();
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const response = await fetch("/api/admin/library-health");
+        if (!response.ok) return;
+        setHealth((await response.json()) as LibraryHealth);
+      })();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (!health) return null;
+
+  const chips = [
+    health.stuckActiveJobs > 0
+      ? `${health.stuckActiveJobs} stuck job${health.stuckActiveJobs === 1 ? "" : "s"}`
+      : null,
+    health.pipelineBacklog > 0
+      ? `${health.pipelineBacklog} queued pipeline`
+      : null,
+    health.missingHlsVideos > 0
+      ? `${health.missingHlsVideos} video${health.missingHlsVideos === 1 ? "" : "s"} without HLS`
+      : null,
+    health.thumbnailIssues > 0
+      ? `${health.thumbnailIssues} thumbnail issue${health.thumbnailIssues === 1 ? "" : "s"}`
+      : null,
+    health.failedJobs > 0 ? `${health.failedJobs} failed in queues` : null,
+  ].filter(Boolean) as string[];
+
+  if (chips.length === 0) {
+    return (
+      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-xs text-muted-foreground">
+        Library health looks good — no stuck jobs or obvious pipeline gaps.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-500/35 bg-amber-500/5 px-4 py-3">
+      <p className="text-xs font-semibold text-foreground">Library health</p>
+      <ul className="mt-1.5 flex flex-wrap gap-2">
+        {chips.map((chip) => (
+          <li
+            key={chip}
+            className="rounded-full bg-background/80 px-2.5 py-1 text-[11px] text-muted-foreground ring-1 ring-border"
+          >
+            {chip}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function AdminJobsPanel() {
   const [failures, setFailures] = useState<JobFailure[]>([]);
   const [gates, setGates] = useState({
@@ -387,6 +458,19 @@ export function AdminJobsPanel() {
 
   return (
     <div className="space-y-8">
+      <AdminLibraryHealthStrip />
+
+      {!gates.webTranscoding ? (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          <p className="font-medium text-foreground">Transcoding is paused</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            New and existing videos will not receive HLS previews until you
+            re-enable transcoding below. Uploads still land in the library;
+            playback may show “waiting for preview” in the player.
+          </p>
+        </div>
+      ) : null}
+
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Job gates</h2>
         <p className="text-xs text-muted-foreground">
@@ -397,11 +481,17 @@ export function AdminJobsPanel() {
           <p className="text-xs text-muted-foreground">{message}</p>
         ) : null}
         <div className="space-y-3 rounded-xl border border-border p-4">
-          <label className="flex items-center justify-between gap-4 text-sm">
+          <label
+            className={cn(
+              "flex items-center justify-between gap-4 rounded-lg p-2 text-sm transition-colors",
+              !gates.webTranscoding && "bg-muted/50",
+            )}
+          >
             <span>
               <span className="font-medium">Transcoding</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 HLS / proxy for videos and sequences
+                {!gates.webTranscoding ? " · paused" : ""}
               </span>
             </span>
             <input
