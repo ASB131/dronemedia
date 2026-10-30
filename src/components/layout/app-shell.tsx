@@ -11,6 +11,7 @@ import { AppNav } from "@/components/layout/app-nav";
 import { ProfileMenu } from "@/components/layout/profile-menu";
 import { SearchBar } from "@/components/search/search-bar";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UploadDock } from "@/components/upload/upload-dock";
 import { Button } from "@/components/ui/button";
@@ -277,6 +278,7 @@ export function AppShell({
               <CloudUpload className="size-5 shrink-0" />
               <span className="hidden sm:inline">Upload</span>
             </Link>
+            <ThemeToggle />
             <NotificationBell />
             <ProfileMenu username={user.username} />
           </div>
