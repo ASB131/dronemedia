@@ -11,7 +11,7 @@ object XxHash64 {
 
     /** Matches Drone Media web xxhashjs h64(0) over the full file. */
     fun hashFile(path: Path): String {
-        FileInputStream(path.toFile()).use { stream -> hashInputStream(stream) }
+        FileInputStream(path.toFile()).use { stream -> return hashInputStream(stream) }
     }
 
     fun hashInputStream(stream: InputStream): String {
