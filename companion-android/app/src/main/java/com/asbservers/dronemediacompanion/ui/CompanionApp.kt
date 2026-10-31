@@ -16,22 +16,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,7 +66,14 @@ fun CompanionApp(context: Context) {
     MaterialTheme {
         Scaffold(
             topBar = {
-                TopAppBar(title = { Text("Drone Media Companion") })
+                TopAppBar(
+                    title = { Text("Drone Media Companion") },
+                    actions = {
+                        if (state.step == CompanionStep.Library) {
+                            TextButton(onClick = vm::signOut) { Text("Sign out") }
+                        }
+                    },
+                )
             },
         ) { padding ->
             Column(
@@ -72,46 +83,125 @@ fun CompanionApp(context: Context) {
                     .fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                OutlinedTextField(
-                    value = state.serverUrl,
-                    onValueChange = vm::updateServerUrl,
-                    label = { Text("Server URL") },
-                    placeholder = { Text("https://your-drone-media.example") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = state.apiKey,
-                    onValueChange = vm::updateApiKey,
-                    label = { Text("API key (dm_…)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Wi‑Fi only uploads")
-                    Switch(checked = state.wifiOnly, onCheckedChange = vm::updateWifiOnly)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = vm::testConnection) { Text("Test") }
-                    Button(
-                        onClick = {
-                            if (!hasMediaPermission) {
-                                permissionLauncher.launch(permissions)
-                            } else {
-                                vm.scanAndCheck()
+                when (state.step) {
+                    CompanionStep.Server -> {
+                        Text(
+                            "Enter the address of your Drone Media site.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedTextField(
+                            value = state.serverInput,
+                            onValueChange = vm::updateServerInput,
+                            label = { Text("Server") },
+                            placeholder = { Text("drone.example.com") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        )
+                        Button(onClick = vm::connectServer, modifier = Modifier.fillMaxWidth()) {
+                            Text("Connect")
+                        }
+                    }
+
+                    CompanionStep.Login -> {
+                        Text(
+                            "Sign in with the same account you use in the browser.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if (state.serverUrl.isNotBlank()) {
+                            Text(
+                                state.serverUrl,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        OutlinedTextField(
+                            value = state.loginUsername,
+                            onValueChange = vm::updateLoginUsername,
+                            label = { Text("Username or email") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = state.loginPassword,
+                            onValueChange = vm::updateLoginPassword,
+                            label = { Text("Password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                        )
+                        Button(onClick = vm::signIn, modifier = Modifier.fillMaxWidth()) {
+                            Text("Sign in")
+                        }
+                        TextButton(onClick = vm::changeServer) {
+                            Text("Use a different server")
+                        }
+                    }
+
+                    CompanionStep.Library -> {
+                        state.signedInUsername?.let { user ->
+                            Text("Signed in as $user · ${state.serverUrl}")
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Wi‑Fi only uploads")
+                            Switch(checked = state.wifiOnly, onCheckedChange = vm::updateWifiOnly)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    if (!hasMediaPermission) {
+                                        permissionLauncher.launch(permissions)
+                                    } else {
+                                        vm.scanAndCheck()
+                                    }
+                                },
+                                enabled = !state.uploading,
+                            ) { Text("Scan DJI Album") }
+                            Button(
+                                onClick = vm::uploadSelected,
+                                enabled = !state.uploading && state.rows.any { it.selected },
+                            ) { Text("Upload") }
+                        }
+                        TextButton(onClick = vm::changeServer) {
+                            Text("Change server")
+                        }
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(state.rows, key = { it.item.id }) { row ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Checkbox(
+                                        checked = row.selected,
+                                        onCheckedChange = { vm.toggleSelected(row.item.id) },
+                                        enabled = row.status == LibraryStatus.New && !state.uploading,
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(row.item.displayName)
+                                        Text(
+                                            "${row.status.label()} · ${formatBytes(row.item.sizeBytes)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                        if (row.uploadProgress > 0f && row.uploadProgress < 1f) {
+                                            LinearProgressIndicator(
+                                                progress = { row.uploadProgress },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        },
-                        enabled = !state.uploading,
-                    ) { Text("Scan DJI Album") }
-                    Button(
-                        onClick = vm::uploadSelected,
-                        enabled = !state.uploading && state.rows.any { it.selected },
-                    ) { Text("Upload") }
+                        }
+                    }
                 }
+
                 state.connectionMessage?.let { Text(it) }
                 state.busyMessage?.let {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,36 +212,6 @@ fun CompanionApp(context: Context) {
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.uploading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(state.rows, key = { it.item.id }) { row ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Checkbox(
-                                checked = row.selected,
-                                onCheckedChange = { vm.toggleSelected(row.item.id) },
-                                enabled = row.status == LibraryStatus.New && !state.uploading,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(row.item.displayName)
-                                Text(
-                                    "${row.status.label()} · ${formatBytes(row.item.sizeBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                if (row.uploadProgress > 0f && row.uploadProgress < 1f) {
-                                    LinearProgressIndicator(
-                                        progress = { row.uploadProgress },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }

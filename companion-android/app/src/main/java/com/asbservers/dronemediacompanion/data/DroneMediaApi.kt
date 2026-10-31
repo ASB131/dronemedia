@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 
 class DroneMediaApi(
     private val baseUrl: String,
-    private val apiKey: String,
+    private val sessionToken: String = "",
 ) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
@@ -20,22 +20,80 @@ class DroneMediaApi(
         .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    private fun authed(path: String): Request.Builder {
-        val url = baseUrl.trimEnd('/') + path
-        return Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
+    private fun url(path: String): String = baseUrl.trimEnd('/') + path
+
+    private fun Request.Builder.withSession(): Request.Builder {
+        if (sessionToken.isNotBlank()) {
+            header("Authorization", "Bearer $sessionToken")
+        }
+        return this
+    }
+
+    fun fetchServerInfo(): Result<Unit> = runCatching {
+        val response = client.newCall(
+            Request.Builder().url(url("/api/companion/info")).get().build(),
+        ).execute()
+        val body = response.body?.string().orEmpty()
+        if (!response.isSuccessful) {
+            error(JsonResponses.errorMessage(body) ?: "HTTP ${response.code}")
+        }
+        val json = JsonResponses.parseObject(body, response.code)
+        if (json.optString("service") != "dronemedia") {
+            error("This site does not look like Drone Media")
+        }
+    }
+
+    data class LoginResult(val sessionToken: String, val username: String)
+
+    fun login(username: String, password: String): Result<LoginResult> = runCatching {
+        val payload = JSONObject()
+            .put("username", username)
+            .put("password", password)
+        val response = client.newCall(
+            Request.Builder()
+                .url(url("/api/companion/login"))
+                .post(payload.toString().toRequestBody(jsonType))
+                .build(),
+        ).execute()
+        val body = response.body?.string().orEmpty()
+        if (!response.isSuccessful) {
+            error(JsonResponses.errorMessage(body) ?: "Sign in failed")
+        }
+        val json = JsonResponses.parseObject(body, response.code)
+        LoginResult(
+            sessionToken = json.getString("sessionToken"),
+            username = json.getString("username"),
+        )
+    }
+
+    fun logout(): Result<Unit> = runCatching {
+        if (sessionToken.isBlank()) return@runCatching
+        val response = client.newCall(
+            Request.Builder()
+                .url(url("/api/companion/logout"))
+                .post("{}".toRequestBody(jsonType))
+                .withSession()
+                .build(),
+        ).execute()
+        if (!response.isSuccessful) {
+            val body = response.body?.string().orEmpty()
+            error(JsonResponses.errorMessage(body) ?: "Sign out failed")
+        }
     }
 
     fun ping(): Result<String> = runCatching {
         val response = client.newCall(
-            authed("/api/companion/ping").get().build(),
+            Request.Builder()
+                .url(url("/api/companion/ping"))
+                .get()
+                .withSession()
+                .build(),
         ).execute()
         val body = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
-            error(parseError(body) ?: "HTTP ${response.code}")
+            error(JsonResponses.errorMessage(body) ?: "HTTP ${response.code}")
         }
-        val json = JSONObject(body)
+        val json = JsonResponses.parseObject(body, response.code)
         json.optString("username", "ok")
     }
 
@@ -65,15 +123,17 @@ class DroneMediaApi(
             payload.put("soft", arr)
         }
         val response = client.newCall(
-            authed("/api/upload/duplicates")
+            Request.Builder()
+                .url(url("/api/upload/duplicates"))
                 .post(payload.toString().toRequestBody(jsonType))
+                .withSession()
                 .build(),
         ).execute()
         val body = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
-            error(parseError(body) ?: "Duplicate lookup failed")
+            error(JsonResponses.errorMessage(body) ?: "Duplicate lookup failed")
         }
-        val json = JSONObject(body)
+        val json = JsonResponses.parseObject(body, response.code)
         val hashMatches = mutableSetOf<String>()
         json.optJSONArray("hashMatches")?.let { arr ->
             for (i in 0 until arr.length()) {
@@ -115,15 +175,17 @@ class DroneMediaApi(
         }
         val payload = JSONObject().put("files", arr)
         val response = client.newCall(
-            authed("/api/upload/batch")
+            Request.Builder()
+                .url(url("/api/upload/batch"))
                 .post(payload.toString().toRequestBody(jsonType))
+                .withSession()
                 .build(),
         ).execute()
         val body = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
-            error(parseError(body) ?: "Batch init failed")
+            error(JsonResponses.errorMessage(body) ?: "Batch init failed")
         }
-        val json = JSONObject(body)
+        val json = JsonResponses.parseObject(body, response.code)
         val batchId = json.getString("batchId")
         val chunkSize = json.getInt("chunkSizeBytes")
         val outFiles = mutableListOf<InitFile>()
@@ -146,38 +208,43 @@ class DroneMediaApi(
 
     fun uploadChunk(fileId: String, index: Int, bytes: ByteArray): Result<Unit> = runCatching {
         val response = client.newCall(
-            authed("/api/upload/files/$fileId/chunks/$index")
+            Request.Builder()
+                .url(url("/api/upload/files/$fileId/chunks/$index"))
                 .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
+                .withSession()
                 .build(),
         ).execute()
         if (!response.isSuccessful) {
             val body = response.body?.string().orEmpty()
-            error(parseError(body) ?: "Chunk upload failed")
+            error(JsonResponses.errorMessage(body) ?: "Chunk upload failed")
         }
     }
 
     fun completeFile(fileId: String): Result<Unit> = runCatching {
         val response = client.newCall(
-            authed("/api/upload/files/$fileId/complete").post("{}".toRequestBody(jsonType)).build(),
+            Request.Builder()
+                .url(url("/api/upload/files/$fileId/complete"))
+                .post("{}".toRequestBody(jsonType))
+                .withSession()
+                .build(),
         ).execute()
         if (!response.isSuccessful) {
             val body = response.body?.string().orEmpty()
-            error(parseError(body) ?: "Complete failed")
+            error(JsonResponses.errorMessage(body) ?: "Complete failed")
         }
     }
 
     fun commitBatch(batchId: String): Result<Unit> = runCatching {
         val response = client.newCall(
-            authed("/api/upload/batch/$batchId/commit").post("{}".toRequestBody(jsonType)).build(),
+            Request.Builder()
+                .url(url("/api/upload/batch/$batchId/commit"))
+                .post("{}".toRequestBody(jsonType))
+                .withSession()
+                .build(),
         ).execute()
         if (!response.isSuccessful) {
             val body = response.body?.string().orEmpty()
-            error(parseError(body) ?: "Commit failed")
+            error(JsonResponses.errorMessage(body) ?: "Commit failed")
         }
-    }
-
-    private fun parseError(body: String): String? {
-        if (body.isBlank()) return null
-        return runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 }

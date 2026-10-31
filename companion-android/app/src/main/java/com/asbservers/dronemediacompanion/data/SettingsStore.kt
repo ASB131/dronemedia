@@ -14,15 +14,21 @@ class SettingsStore(context: Context) {
     )
 
     var serverUrl: String
-        get() = prefs.getString(KEY_SERVER, DEFAULT_SERVER) ?: DEFAULT_SERVER
+        get() = prefs.getString(KEY_SERVER, "") ?: ""
         set(value) {
             prefs.edit().putString(KEY_SERVER, value.trim().trimEnd('/')).apply()
         }
 
-    var apiKey: String
-        get() = prefs.getString(KEY_API_KEY, "") ?: ""
+    var sessionToken: String
+        get() = prefs.getString(KEY_SESSION, "") ?: ""
         set(value) {
-            prefs.edit().putString(KEY_API_KEY, value.trim()).apply()
+            prefs.edit().putString(KEY_SESSION, value.trim()).apply()
+        }
+
+    var username: String
+        get() = prefs.getString(KEY_USERNAME, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_USERNAME, value.trim()).apply()
         }
 
     var wifiOnlyUpload: Boolean
@@ -31,10 +37,17 @@ class SettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_WIFI_ONLY, value).apply()
         }
 
+    fun clearSession() {
+        prefs.edit()
+            .remove(KEY_SESSION)
+            .remove(KEY_USERNAME)
+            .apply()
+    }
+
     companion object {
         private const val KEY_SERVER = "server_url"
-        private const val KEY_API_KEY = "api_key"
+        private const val KEY_SESSION = "session_token"
+        private const val KEY_USERNAME = "username"
         private const val KEY_WIFI_ONLY = "wifi_only"
-        const val DEFAULT_SERVER = ""
     }
 }

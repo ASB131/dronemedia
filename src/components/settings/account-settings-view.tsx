@@ -667,9 +667,9 @@ export function AccountSettingsView() {
                   <p className="text-sm font-semibold">Companion app API keys</p>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  For the Android companion app. Keys start with{" "}
-                  <span className="font-mono">dm_</span> — paste into the app
-                  with your site URL. The secret is shown once when created.
+                  Optional keys for scripts and automation (starts with{" "}
+                  <span className="font-mono">dm_</span>). The Android companion
+                  app signs in with your normal username and password instead.
                 </p>
                 <form
                   onSubmit={(event) => {

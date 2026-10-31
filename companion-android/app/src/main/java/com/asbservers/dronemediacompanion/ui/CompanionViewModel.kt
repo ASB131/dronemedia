@@ -8,6 +8,7 @@ import com.asbservers.dronemediacompanion.data.DjiAlbumScanner
 import com.asbservers.dronemediacompanion.data.DroneMediaApi
 import com.asbservers.dronemediacompanion.data.LocalFileAccess
 import com.asbservers.dronemediacompanion.data.LocalMediaItem
+import com.asbservers.dronemediacompanion.data.ServerUrlNormalizer
 import com.asbservers.dronemediacompanion.data.SettingsStore
 import com.asbservers.dronemediacompanion.data.UploadEngine
 import com.asbservers.dronemediacompanion.data.XxHash64
@@ -28,6 +29,12 @@ enum class LibraryStatus {
     SoftMatch,
 }
 
+enum class CompanionStep {
+    Server,
+    Login,
+    Library,
+}
+
 data class MediaRow(
     val item: LocalMediaItem,
     val status: LibraryStatus = LibraryStatus.Unknown,
@@ -37,8 +44,12 @@ data class MediaRow(
 )
 
 data class CompanionUiState(
+    val step: CompanionStep = CompanionStep.Server,
+    val serverInput: String = "",
     val serverUrl: String = "",
-    val apiKey: String = "",
+    val loginUsername: String = "",
+    val loginPassword: String = "",
+    val signedInUsername: String? = null,
     val wifiOnly: Boolean = true,
     val connectionMessage: String? = null,
     val busyMessage: String? = null,
@@ -56,19 +67,37 @@ class CompanionViewModel(
 
     private val _state = MutableStateFlow(
         CompanionUiState(
+            serverInput = settings.serverUrl.removePrefix("https://").removePrefix("http://"),
             serverUrl = settings.serverUrl,
-            apiKey = settings.apiKey,
+            loginUsername = settings.username,
+            signedInUsername = settings.username.takeIf { settings.sessionToken.isNotBlank() },
             wifiOnly = settings.wifiOnlyUpload,
+            step = when {
+                settings.sessionToken.isNotBlank() && settings.serverUrl.isNotBlank() ->
+                    CompanionStep.Library
+                settings.serverUrl.isNotBlank() -> CompanionStep.Login
+                else -> CompanionStep.Server
+            },
         ),
     )
     val state: StateFlow<CompanionUiState> = _state.asStateFlow()
 
-    fun updateServerUrl(value: String) {
-        _state.update { it.copy(serverUrl = value) }
+    init {
+        if (settings.sessionToken.isNotBlank() && settings.serverUrl.isNotBlank()) {
+            refreshSession()
+        }
     }
 
-    fun updateApiKey(value: String) {
-        _state.update { it.copy(apiKey = value) }
+    fun updateServerInput(value: String) {
+        _state.update { it.copy(serverInput = value, error = null) }
+    }
+
+    fun updateLoginUsername(value: String) {
+        _state.update { it.copy(loginUsername = value) }
+    }
+
+    fun updateLoginPassword(value: String) {
+        _state.update { it.copy(loginPassword = value) }
     }
 
     fun updateWifiOnly(value: Boolean) {
@@ -76,35 +105,139 @@ class CompanionViewModel(
         _state.update { it.copy(wifiOnly = value) }
     }
 
-    fun saveSettings() {
-        settings.serverUrl = _state.value.serverUrl
-        settings.apiKey = _state.value.apiKey
-    }
-
-    fun testConnection() {
+    fun connectServer() {
         viewModelScope.launch {
-            _state.update { it.copy(busyMessage = "Testing connection…", error = null) }
-            saveSettings()
+            val normalized = ServerUrlNormalizer.normalize(_state.value.serverInput)
+            if (normalized.isBlank()) {
+                _state.update { it.copy(error = "Enter your server address") }
+                return@launch
+            }
+            _state.update { it.copy(busyMessage = "Connecting…", error = null) }
             val result = withContext(Dispatchers.IO) {
-                api().ping()
+                DroneMediaApi(normalized).fetchServerInfo()
             }
             _state.update {
+                if (result.isSuccess) {
+                    settings.serverUrl = normalized
+                    settings.clearSession()
+                    it.copy(
+                        busyMessage = null,
+                        serverUrl = normalized,
+                        step = CompanionStep.Login,
+                        signedInUsername = null,
+                        connectionMessage = "Connected to Drone Media",
+                        error = null,
+                        rows = emptyList(),
+                    )
+                } else {
+                    it.copy(
+                        busyMessage = null,
+                        error = result.exceptionOrNull()?.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun signIn() {
+        viewModelScope.launch {
+            val s = _state.value
+            if (s.serverUrl.isBlank()) {
+                _state.update { it.copy(step = CompanionStep.Server, error = "Connect to a server first") }
+                return@launch
+            }
+            if (s.loginUsername.isBlank() || s.loginPassword.isBlank()) {
+                _state.update { it.copy(error = "Enter username and password") }
+                return@launch
+            }
+            _state.update { it.copy(busyMessage = "Signing in…", error = null) }
+            val result = withContext(Dispatchers.IO) {
+                DroneMediaApi(s.serverUrl).login(s.loginUsername, s.loginPassword)
+            }
+            _state.update {
+                if (result.isSuccess) {
+                    val login = result.getOrThrow()
+                    settings.serverUrl = s.serverUrl
+                    settings.sessionToken = login.sessionToken
+                    settings.username = login.username
+                    it.copy(
+                        busyMessage = null,
+                        loginPassword = "",
+                        signedInUsername = login.username,
+                        step = CompanionStep.Library,
+                        connectionMessage = "Signed in as ${login.username}",
+                        error = null,
+                    )
+                } else {
+                    it.copy(
+                        busyMessage = null,
+                        error = result.exceptionOrNull()?.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            val api = apiOrNull()
+            if (api != null) {
+                withContext(Dispatchers.IO) { api.logout() }
+            }
+            settings.clearSession()
+            _state.update {
                 it.copy(
-                    busyMessage = null,
-                    connectionMessage = result.fold(
-                        onSuccess = { user -> "Connected as $user" },
-                        onFailure = { e -> null },
-                    ),
-                    error = result.exceptionOrNull()?.message,
+                    step = CompanionStep.Login,
+                    signedInUsername = null,
+                    connectionMessage = null,
+                    rows = emptyList(),
+                    error = null,
                 )
+            }
+        }
+    }
+
+    fun changeServer() {
+        viewModelScope.launch {
+            apiOrNull()?.let { withContext(Dispatchers.IO) { it.logout() } }
+            settings.clearSession()
+            settings.serverUrl = ""
+            _state.update {
+                it.copy(
+                    step = CompanionStep.Server,
+                    serverUrl = "",
+                    signedInUsername = null,
+                    connectionMessage = null,
+                    rows = emptyList(),
+                    error = null,
+                )
+            }
+        }
+    }
+
+    private fun refreshSession() {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { apiOrNull()?.ping() }
+            if (result?.isFailure == true) {
+                settings.clearSession()
+                _state.update {
+                    it.copy(
+                        step = CompanionStep.Login,
+                        signedInUsername = null,
+                        error = result.exceptionOrNull()?.message,
+                    )
+                }
             }
         }
     }
 
     fun scanAndCheck() {
         viewModelScope.launch {
+            if (_state.value.step != CompanionStep.Library) {
+                _state.update { it.copy(error = "Sign in first") }
+                return@launch
+            }
             _state.update { it.copy(busyMessage = "Scanning DJI Album…", error = null) }
-            saveSettings()
             val scanned = withContext(Dispatchers.IO) { scanner.scan() }
             val rows = scanned.map { MediaRow(it) }
             _state.update { it.copy(rows = rows, busyMessage = "Checking library…") }
@@ -113,7 +246,7 @@ class CompanionViewModel(
     }
 
     private suspend fun classifyRows(initial: List<MediaRow>) {
-        val api = api()
+        val api = apiOrNull() ?: return
         val batchSize = 50
         val updated = initial.toMutableList()
         for (chunk in updated.indices.chunked(batchSize)) {
@@ -123,9 +256,11 @@ class CompanionViewModel(
             for (i in chunk) {
                 val row = updated[i]
                 _state.update { s ->
-                    s.copy(rows = s.rows.map { r ->
-                        if (r.item.id == row.item.id) r.copy(status = LibraryStatus.Hashing) else r
-                    })
+                    s.copy(
+                        rows = s.rows.map { r ->
+                            if (r.item.id == row.item.id) r.copy(status = LibraryStatus.Hashing) else r
+                        },
+                    )
                 }
                 val digest = withContext(Dispatchers.IO) {
                     val (path, temp) = fileAccess.resolvePath(row.item)
@@ -180,14 +315,18 @@ class CompanionViewModel(
 
     fun uploadSelected() {
         viewModelScope.launch {
+            val api = apiOrNull()
+            if (api == null) {
+                _state.update { it.copy(error = "Sign in first") }
+                return@launch
+            }
             val selected = _state.value.rows.filter { it.selected && it.status == LibraryStatus.New }
             if (selected.isEmpty()) {
                 _state.update { it.copy(error = "No new files selected") }
                 return@launch
             }
             _state.update { it.copy(uploading = true, busyMessage = "Uploading…", error = null) }
-            saveSettings()
-            val engine = UploadEngine(appContext, api())
+            val engine = UploadEngine(appContext, api)
             val result = withContext(Dispatchers.IO) {
                 engine.uploadItems(selected.map { it.item }) { item, progress ->
                     _state.update { s ->
@@ -216,9 +355,11 @@ class CompanionViewModel(
         }
     }
 
-    private fun api(): DroneMediaApi {
-        val s = _state.value
-        return DroneMediaApi(s.serverUrl, s.apiKey)
+    private fun apiOrNull(): DroneMediaApi? {
+        val url = settings.serverUrl.ifBlank { _state.value.serverUrl }
+        val token = settings.sessionToken
+        if (url.isBlank() || token.isBlank()) return null
+        return DroneMediaApi(url, token)
     }
 
     class Factory(private val context: Context) : ViewModelProvider.Factory {

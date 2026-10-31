@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { auth } from "@/auth";
 import { findUserIdForApiKey } from "@/lib/auth/api-keys";
-import { findUserById } from "@/lib/auth/users";
+import { findUserById, findUserIdForCompanionSession } from "@/lib/auth/users";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { reconcileUserStorageUsed } from "@/lib/users/storage-usage";
@@ -46,14 +46,21 @@ export type ApprovedAuthSession = Awaited<
   ReturnType<typeof requireApprovedSession>
 >;
 
-/** Browser session or `Authorization: Bearer dm_…` API key (companion app). */
+/** Browser cookie, companion session token, or `Authorization: Bearer dm_…` API key. */
 export async function requireApprovedSessionOrApiKey(
   request: Request,
 ): Promise<ApprovedAuthSession> {
   const header = request.headers.get("authorization");
   if (header?.toLowerCase().startsWith("bearer ")) {
     const raw = header.slice(7).trim();
-    const userId = await findUserIdForApiKey(raw);
+    if (!raw) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const userId = raw.startsWith("dm_")
+      ? await findUserIdForApiKey(raw)
+      : await findUserIdForCompanionSession(raw);
+
     if (userId) {
       const dbUser = await findUserById(userId);
       if (!dbUser || dbUser.approvalStatus !== "approved") {
@@ -69,7 +76,11 @@ export async function requireApprovedSessionOrApiKey(
         expires: new Date(Date.now() + 3600_000).toISOString(),
       } as ApprovedAuthSession;
     }
-    throw new ApiError(401, "Invalid API key");
+
+    throw new ApiError(
+      401,
+      raw.startsWith("dm_") ? "Invalid API key" : "Session expired — sign in again",
+    );
   }
   return requireApprovedSession();
 }

@@ -7,6 +7,8 @@ on:
       - "companion-android/**"
       - ".github/workflows/companion-android.yml"
       - "src/app/api/companion/**"
+      - "src/lib/auth/credential-login.ts"
+      - "src/lib/auth/users.ts"
       - "src/app/api/upload/**"
       - "src/lib/api/auth.ts"
       - "src/lib/auth/api-keys.ts"
