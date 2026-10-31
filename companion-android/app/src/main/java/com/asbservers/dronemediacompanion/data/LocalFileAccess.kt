@@ -26,4 +26,14 @@ class LocalFileAccess(private val context: Context) {
     fun cleanupTemp(path: Path, wasTemp: Boolean) {
         if (wasTemp) path.deleteIfExists()
     }
+
+    /** Hash without copying whole media files into cache (important for large videos). */
+    fun hashItem(item: LocalMediaItem): String {
+        if (item.contentUri.scheme == "file") {
+            return XxHash64.hashFile(File(item.contentUri.path!!).toPath())
+        }
+        val stream = context.contentResolver.openInputStream(item.contentUri)
+            ?: error("Cannot read ${item.displayName}")
+        return stream.use { XxHash64.hashInputStream(it) }
+    }
 }

@@ -265,65 +265,117 @@ class CompanionViewModel(
             }
             val rows = scanned.map { MediaRow(it) }
             _state.update { it.copy(rows = rows, busyMessage = "Checking library…") }
-            classifyRows(rows)
+            withContext(Dispatchers.IO) {
+                classifyRows(rows)
+            }
         }
     }
 
     private suspend fun classifyRows(initial: List<MediaRow>) {
-        val api = apiOrNull() ?: return
+        val api = apiOrNull()
+        if (api == null) {
+            _state.update {
+                it.copy(busyMessage = null, error = "Session expired — sign in again")
+            }
+            return
+        }
         val batchSize = 50
         val updated = initial.toMutableList()
-        for (chunk in updated.indices.chunked(batchSize)) {
-            val digests = mutableListOf<String>()
-            val soft = mutableListOf<Triple<String, String, Long>>()
-            val indexMap = mutableListOf<Int>()
-            for (i in chunk) {
-                val row = updated[i]
-                _state.update { s ->
-                    s.copy(
-                        rows = s.rows.map { r ->
-                            if (r.item.id == row.item.id) r.copy(status = LibraryStatus.Hashing) else r
-                        },
-                    )
+        val total = updated.size
+        try {
+            for (chunk in updated.indices.chunked(batchSize)) {
+                val softBatch = chunk.map { i ->
+                    val row = updated[i]
+                    val (basename, _) = parseBasename(row.item.displayName)
+                    val softKey = "${row.item.relativePath}::${row.item.sizeBytes}"
+                    Triple(i, softKey, Triple(softKey, basename, row.item.sizeBytes))
                 }
-                val digest = withContext(Dispatchers.IO) {
-                    val (path, temp) = fileAccess.resolvePath(row.item)
-                    try {
-                        XxHash64.hashFile(path)
-                    } finally {
-                        fileAccess.cleanupTemp(path, temp)
+                val softOnly = softBatch.map { it.third }
+                val softDup = api.lookupDuplicates(emptyList(), softOnly).getOrElse { e ->
+                    _state.update { it.copy(busyMessage = null, error = e.message) }
+                    return
+                }
+                val needsHash = mutableListOf<Int>()
+                for ((i, softKey, _) in softBatch) {
+                    if (softKey in softDup.softMatches) {
+                        updated[i] = updated[i].copy(
+                            status = LibraryStatus.SoftMatch,
+                            selected = false,
+                        )
+                    } else {
+                        needsHash += i
                     }
                 }
-                val (basename, _) = parseBasename(row.item.displayName)
-                val softKey = "${row.item.relativePath}::${row.item.sizeBytes}"
-                digests += digest
-                soft += Triple(softKey, basename, row.item.sizeBytes)
-                indexMap += i
-                updated[i] = row.copy(digest = digest)
-            }
-            val dup = api.lookupDuplicates(digests, soft).getOrElse { e ->
-                _state.update { it.copy(busyMessage = null, error = e.message) }
-                return
-            }
-            for ((j, i) in indexMap.withIndex()) {
-                val digest = digests[j]
-                val softKey = soft[j].first
-                val status = when {
-                    digest in dup.hashMatches -> LibraryStatus.InLibrary
-                    softKey in dup.softMatches -> LibraryStatus.SoftMatch
-                    else -> LibraryStatus.New
+                _state.update { it.copy(rows = updated.toList()) }
+
+                val digests = mutableListOf<String>()
+                val digestIndices = mutableListOf<Int>()
+                for ((progress, i) in needsHash.withIndex()) {
+                    val row = updated[i]
+                    _state.update { s ->
+                        s.copy(
+                            busyMessage =
+                                "Checking ${progress + 1}/${needsHash.size} in batch " +
+                                "(${row.item.displayName})",
+                            rows = s.rows.map { r ->
+                                if (r.item.id == row.item.id) {
+                                    r.copy(status = LibraryStatus.Hashing)
+                                } else {
+                                    r
+                                }
+                            },
+                        )
+                    }
+                    val digest = try {
+                        fileAccess.hashItem(row.item)
+                    } catch (e: Exception) {
+                        _state.update {
+                            it.copy(
+                                busyMessage = null,
+                                error = e.message ?: "Failed to read ${row.item.displayName}",
+                            )
+                        }
+                        return
+                    }
+                    digests += digest
+                    digestIndices += i
+                    updated[i] = row.copy(digest = digest)
                 }
-                val selected = status == LibraryStatus.New
-                updated[i] = updated[i].copy(status = status, selected = selected)
+                if (digests.isNotEmpty()) {
+                    val hashDup = api.lookupDuplicates(digests, emptyList()).getOrElse { e ->
+                        _state.update { it.copy(busyMessage = null, error = e.message) }
+                        return
+                    }
+                    for ((j, i) in digestIndices.withIndex()) {
+                        val digest = digests[j]
+                        val status = if (digest in hashDup.hashMatches) {
+                            LibraryStatus.InLibrary
+                        } else {
+                            LibraryStatus.New
+                        }
+                        updated[i] = updated[i].copy(
+                            status = status,
+                            selected = status == LibraryStatus.New,
+                        )
+                    }
+                }
+                _state.update { it.copy(rows = updated.toList()) }
             }
-            _state.update { it.copy(rows = updated.toList()) }
-        }
-        val newCount = updated.count { it.status == LibraryStatus.New }
-        _state.update {
-            it.copy(
-                busyMessage = null,
-                connectionMessage = "$newCount new · ${updated.size - newCount} already in library",
-            )
+            val newCount = updated.count { it.status == LibraryStatus.New }
+            _state.update {
+                it.copy(
+                    busyMessage = null,
+                    connectionMessage =
+                        "$newCount new · ${total - newCount} already in library (of $total files)",
+                )
+            }
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(
+                    busyMessage = null,
+                    error = e.message ?: "Library check failed",
+                )
+            }
         }
     }
 

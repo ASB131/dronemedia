@@ -239,7 +239,7 @@ fun CompanionApp(context: Context) {
 
 private fun LibraryStatus.label(): String = when (this) {
     LibraryStatus.Unknown -> "Unknown"
-    LibraryStatus.Hashing -> "Checking…"
+    LibraryStatus.Hashing -> "Hashing…"
     LibraryStatus.New -> "New"
     LibraryStatus.InLibrary -> "In library"
     LibraryStatus.SoftMatch -> "Possible duplicate"
