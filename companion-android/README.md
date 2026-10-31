@@ -7,7 +7,7 @@ Native app — not a WebView. After **DJI Quick Transfer** saves media to `DCIM/
 1. On GitHub open **Releases** and download **Drone Media Companion (latest)** (`companion-latest`), or grab the APK from the latest **Build companion APK** workflow artifact on `main`.
 2. Install the APK (allow installs from your browser/files app if Android prompts).
 3. In the companion: enter your server (e.g. `drone.example.com`) → **Connect** → sign in with your Drone Media username and password.
-4. **Scan DJI Album** → **Upload** (files already in your library are skipped).
+4. **Scan DJI Album** → tap thumbnails to **preview** photos and videos → **Upload** (files already in your library are skipped).
 
 ## Server requirement
 

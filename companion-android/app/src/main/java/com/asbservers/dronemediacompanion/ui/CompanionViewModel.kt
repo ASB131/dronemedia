@@ -55,6 +55,7 @@ data class CompanionUiState(
     val error: String? = null,
     val rows: List<MediaRow> = emptyList(),
     val uploading: Boolean = false,
+    val previewItem: LocalMediaItem? = null,
 )
 
 class CompanionViewModel(
@@ -375,6 +376,30 @@ class CompanionViewModel(
                     error = e.message ?: "Library check failed",
                 )
             }
+        }
+    }
+
+    fun openPreview(item: LocalMediaItem) {
+        _state.update { it.copy(previewItem = item) }
+    }
+
+    fun closePreview() {
+        _state.update { it.copy(previewItem = null) }
+    }
+
+    fun selectAllNew() {
+        _state.update { s ->
+            s.copy(
+                rows = s.rows.map { row ->
+                    if (row.status == LibraryStatus.New) row.copy(selected = true) else row
+                },
+            )
+        }
+    }
+
+    fun clearSelection() {
+        _state.update { s ->
+            s.copy(rows = s.rows.map { it.copy(selected = false) })
         }
     }
 

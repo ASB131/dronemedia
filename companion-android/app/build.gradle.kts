@@ -12,8 +12,8 @@ android {
         applicationId = "com.asbservers.dronemediacompanion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.1.0"
     }
 
     buildTypes {
@@ -54,6 +54,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.lz4:lz4-java:1.8.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
