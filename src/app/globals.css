@@ -50,6 +50,10 @@
 
 /* Immich-inspired palette: indigo primary, clean white / near-black surfaces */
 :root {
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Ubuntu, Cantarell,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", "Liberation Mono",
+    monospace;
   --immich-primary: 66 80 175;
   --immich-bg: 255 255 255;
   --immich-fg: 0 0 0;

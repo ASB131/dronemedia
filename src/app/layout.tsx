@@ -1,22 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Overpass, Overpass_Mono } from "next/font/google";
 import Script from "next/script";
 
 import { loadConfig } from "@/lib/config";
 
 import "./globals.css";
-
-const overpass = Overpass({
-  variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
-
-const overpassMono = Overpass_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export const metadata: Metadata = {
   title: "Drone Media",
@@ -77,7 +64,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${overpass.variable} ${overpassMono.variable} h-full antialiased`}
+      className="h-full antialiased"
       style={
         {
           "--immich-primary": accentRgb,
