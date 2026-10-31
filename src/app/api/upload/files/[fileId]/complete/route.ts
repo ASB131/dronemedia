@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { jsonError, requireApprovedSessionOrApiKey } from "@/lib/api/auth";
 import { assembleUploadFile } from "@/lib/upload/assemble";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ fileId: string }> },
 ) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const { fileId } = await context.params;
     const file = await assembleUploadFile(fileId, session.user.id);
     return NextResponse.json({

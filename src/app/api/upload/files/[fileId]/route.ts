@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { jsonError, requireApprovedSessionOrApiKey } from "@/lib/api/auth";
 import {
   getUploadFileStatus,
   markUploadFileFailed,
@@ -16,11 +16,11 @@ const patchBodySchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ fileId: string }> },
 ) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const { fileId } = await context.params;
     const file = await getUploadFileStatus(fileId, session.user.id);
     if (!file) {
@@ -53,7 +53,7 @@ export async function PATCH(
   context: { params: Promise<{ fileId: string }> },
 ) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const { fileId } = await context.params;
     const body = patchBodySchema.safeParse(await request.json());
     if (!body.success) {

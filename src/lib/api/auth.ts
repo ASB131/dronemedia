@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { auth } from "@/auth";
+import { findUserIdForApiKey } from "@/lib/auth/api-keys";
 import { findUserById } from "@/lib/auth/users";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -39,6 +40,38 @@ export async function requireAdminSession() {
     throw new ApiError(403, "Admin access required");
   }
   return session;
+}
+
+export type ApprovedAuthSession = Awaited<
+  ReturnType<typeof requireApprovedSession>
+>;
+
+/** Browser session or `Authorization: Bearer dm_…` API key (companion app). */
+export async function requireApprovedSessionOrApiKey(
+  request: Request,
+): Promise<ApprovedAuthSession> {
+  const header = request.headers.get("authorization");
+  if (header?.toLowerCase().startsWith("bearer ")) {
+    const raw = header.slice(7).trim();
+    const userId = await findUserIdForApiKey(raw);
+    if (userId) {
+      const dbUser = await findUserById(userId);
+      if (!dbUser || dbUser.approvalStatus !== "approved") {
+        throw new ApiError(403, "Account not approved");
+      }
+      return {
+        user: {
+          id: dbUser.id,
+          role: dbUser.role,
+          approvalStatus: dbUser.approvalStatus,
+          username: dbUser.username,
+        },
+        expires: new Date(Date.now() + 3600_000).toISOString(),
+      } as ApprovedAuthSession;
+    }
+    throw new ApiError(401, "Invalid API key");
+  }
+  return requireApprovedSession();
 }
 
 export async function getUserStorage(userId: string) {

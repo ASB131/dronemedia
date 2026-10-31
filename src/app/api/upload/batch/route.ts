@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import {
   ApiError,
   jsonError,
-  requireApprovedSession,
+  requireApprovedSessionOrApiKey,
 } from "@/lib/api/auth";
 import { formatDbError } from "@/lib/api/db-error";
 import { createUploadBatch } from "@/lib/upload/session";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const body = uploadInitBodySchema.parse(await request.json());
     const result = await createUploadBatch(session.user.id, body);
     return NextResponse.json(result, { status: 201 });

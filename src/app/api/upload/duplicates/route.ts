@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { jsonError, requireApprovedSessionOrApiKey } from "@/lib/api/auth";
 import { getWebDb } from "@/lib/db";
 import { assetFiles, assets } from "@/lib/db/schema";
 
@@ -25,7 +25,7 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const userId = session.user.id;
     const body = bodySchema.parse(await request.json());
     const db = getWebDb();

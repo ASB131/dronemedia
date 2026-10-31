@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { jsonError, requireApprovedSession } from "@/lib/api/auth";
+import { jsonError, requireApprovedSessionOrApiKey } from "@/lib/api/auth";
 import { getUploadFileStatus, recordUploadedChunk } from "@/lib/upload/session";
 import { writeUploadChunk } from "@/lib/upload/chunks";
 
@@ -18,7 +18,7 @@ export async function PUT(
   context: { params: Promise<{ fileId: string; index: string }> },
 ) {
   try {
-    const session = await requireApprovedSession();
+    const session = await requireApprovedSessionOrApiKey(request);
     const rawParams = await context.params;
     const { fileId, index: chunkIndex } = paramsSchema.parse({
       fileId: rawParams.fileId,

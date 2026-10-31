@@ -47,6 +47,27 @@ export async function createApiKey(userId: string, label: string) {
   return { key: row, raw };
 }
 
+export async function findUserIdForApiKey(rawKey: string) {
+  if (!rawKey.startsWith("dm_")) return null;
+  const db = getWebDb();
+  const hash = hashApiKey(rawKey);
+  const rows = await db
+    .select({
+      id: apiKeys.id,
+      userId: apiKeys.userId,
+    })
+    .from(apiKeys)
+    .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  await db
+    .update(apiKeys)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(apiKeys.id, row.id));
+  return row.userId;
+}
+
 export async function revokeApiKey(userId: string, keyId: string) {
   const db = getWebDb();
   const [row] = await db
