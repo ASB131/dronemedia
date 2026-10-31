@@ -664,12 +664,12 @@ export function AccountSettingsView() {
               <section className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center gap-2">
                   <KeyRound className="size-4 text-muted-foreground" />
-                  <p className="text-sm font-semibold">Companion app API keys</p>
+                  <p className="text-sm font-semibold">API keys</p>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Optional keys for scripts and automation (starts with{" "}
-                  <span className="font-mono">dm_</span>). The Android companion
-                  app signs in with your normal username and password instead.
+                  <span className="font-mono">dm_</span>). Upload APIs accept{" "}
+                  <span className="font-mono">Authorization: Bearer …</span>.
                 </p>
                 <form
                   onSubmit={(event) => {

@@ -84,20 +84,6 @@ export async function revokeAllDbSessionsForUser(userId: string): Promise<void> 
 }
 
 /** Returns false when the token is missing or revoked. */
-export async function findUserIdForCompanionSession(
-  sessionToken: string,
-): Promise<string | null> {
-  const active = await isDbSessionActive(sessionToken);
-  if (!active) return null;
-  const db = getWebDb();
-  const [row] = await db
-    .select({ userId: sessions.userId })
-    .from(sessions)
-    .where(eq(sessions.sessionToken, sessionToken))
-    .limit(1);
-  return row?.userId ?? null;
-}
-
 export async function isDbSessionActive(sessionToken: string): Promise<boolean> {
   const db = getWebDb();
   const [row] = await db

@@ -19,13 +19,7 @@ const PUBLIC_PREFIXES = [
   "/api/public",
 ];
 
-/** Companion connect + sign-in (no cookie yet). */
-const PUBLIC_COMPANION_PATHS = new Set([
-  "/api/companion/info",
-  "/api/companion/login",
-]);
-
-const BEARER_API_PREFIXES = ["/api/companion", "/api/upload"];
+const BEARER_API_PREFIXES = ["/api/upload"];
 
 function hasBearerAuthorization(req: Request): boolean {
   const header = req.headers.get("authorization");
@@ -42,7 +36,6 @@ export default auth((req) => {
 
   if (
     PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
-    PUBLIC_COMPANION_PATHS.has(pathname) ||
     pathname.startsWith("/_next") ||
     STATIC_FILE_EXT.test(pathname)
   ) {

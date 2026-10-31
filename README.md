@@ -79,7 +79,6 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 - **Flights**: grouped clips with path map, altitude graph, and media strip
 - **Community**: public profiles and a shared map (`/community`, `/u/{username}`)
 - **Admin**: users, invites, settings, integrity, storage, backups, jobs
-- **Android companion**: native app for DJI Quick Transfer — scan `DCIM/DJI Album`, skip library duplicates, upload via API key ([companion-android/README.md](companion-android/README.md); APK on [Releases](https://github.com/ASB131/dronemedia/releases) tag `companion-latest`)
 
 While transcoding is paused, Live Processing finishes after metadata. Deferred items show under **Utilities → Jobs**. Videos without a streaming preview show a status message instead of playing Source in the player.
 
