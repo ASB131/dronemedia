@@ -57,7 +57,11 @@ fun CompanionApp(context: Context) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { }
+    ) { grants ->
+        if (grants.isNotEmpty() && grants.values.all { it }) {
+            vm.scanAndCheck()
+        }
+    }
 
     val hasMediaPermission = permissions.all {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -150,6 +154,13 @@ fun CompanionApp(context: Context) {
                             Text("Wi‑Fi only uploads")
                             Switch(checked = state.wifiOnly, onCheckedChange = vm::updateWifiOnly)
                         }
+                        if (!hasMediaPermission) {
+                            Text(
+                                "Photo and video access is required to read DCIM/DJI Album.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
@@ -168,6 +179,13 @@ fun CompanionApp(context: Context) {
                         }
                         TextButton(onClick = vm::changeServer) {
                             Text("Change server")
+                        }
+                        if (state.rows.isEmpty() && state.busyMessage == null && state.error == null) {
+                            Text(
+                                "Tap Scan to list clips from DCIM/DJI Album.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                         LazyColumn(
                             modifier = Modifier.weight(1f),

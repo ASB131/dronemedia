@@ -237,8 +237,32 @@ class CompanionViewModel(
                 _state.update { it.copy(error = "Sign in first") }
                 return@launch
             }
-            _state.update { it.copy(busyMessage = "Scanning DJI Album…", error = null) }
-            val scanned = withContext(Dispatchers.IO) { scanner.scan() }
+            _state.update {
+                it.copy(busyMessage = "Scanning DJI Album…", error = null, connectionMessage = null)
+            }
+            val scanned = try {
+                withContext(Dispatchers.IO) { scanner.scan() }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        busyMessage = null,
+                        error = e.message ?: "Scan failed — check photo/video permission",
+                    )
+                }
+                return@launch
+            }
+            if (scanned.isEmpty()) {
+                _state.update {
+                    it.copy(
+                        busyMessage = null,
+                        rows = emptyList(),
+                        connectionMessage =
+                            "No files found in DCIM/DJI Album. Run DJI Quick Transfer first, " +
+                            "then allow photo & video access for this app.",
+                    )
+                }
+                return@launch
+            }
             val rows = scanned.map { MediaRow(it) }
             _state.update { it.copy(rows = rows, busyMessage = "Checking library…") }
             classifyRows(rows)

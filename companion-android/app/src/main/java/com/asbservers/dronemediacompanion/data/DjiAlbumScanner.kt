@@ -2,6 +2,7 @@ package com.asbservers.dronemediacompanion.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -13,14 +14,18 @@ data class LocalMediaItem(
     val relativePath: String,
     val sizeBytes: Long,
     val lastModifiedMs: Long,
-    val contentUri: android.net.Uri,
+    val contentUri: Uri,
 )
 
 class DjiAlbumScanner(private val context: Context) {
 
     fun scan(): List<LocalMediaItem> {
         val fromStore = queryMediaStore()
-        val fromDisk = scanLegacyFolders()
+        val fromDisk = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            scanLegacyFolders()
+        } else {
+            emptyList()
+        }
         return mergeByKey(fromStore + fromDisk)
     }
 
@@ -31,6 +36,15 @@ class DjiAlbumScanner(private val context: Context) {
             map[key] = item
         }
         return map.values.sortedByDescending { it.lastModifiedMs }
+    }
+
+    private fun isDjiAlbumPath(relativePath: String, displayName: String, dataPath: String?): Boolean {
+        val combined = buildString {
+            append(relativePath)
+            if (!dataPath.isNullOrBlank()) append(' ').append(dataPath)
+            append(' ').append(displayName)
+        }.lowercase()
+        return combined.contains("dji") && combined.contains("album")
     }
 
     private fun queryMediaStore(): List<LocalMediaItem> {
@@ -48,6 +62,7 @@ class DjiAlbumScanner(private val context: Context) {
             MediaStore.Files.FileColumns.DATE_MODIFIED,
             MediaStore.Files.FileColumns.RELATIVE_PATH,
             MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.MEDIA_TYPE,
         )
 
         val selection = buildString {
@@ -58,53 +73,49 @@ class DjiAlbumScanner(private val context: Context) {
             append(" OR ")
             append("${MediaStore.Files.FileColumns.MEDIA_TYPE}=0")
             append(")")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                append(" AND (")
-                append("${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ?")
-                append(" OR ${MediaStore.Files.FileColumns.RELATIVE_PATH} LIKE ?")
-                append(")")
-            }
         }
 
-        val selectionArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf("%DCIM/DJI Album/%", "%DCIM/DJI%Album/%")
-        } else {
-            null
-        }
-
-        context.contentResolver.query(
+        val cursor = context.contentResolver.query(
             collection,
             projection,
             selection,
-            selectionArgs,
+            null,
             "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC",
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
-            val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
-            val modCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
-            val relCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.RELATIVE_PATH)
-            val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATA)
+        ) ?: return results
 
-            while (cursor.moveToNext()) {
-                val name = cursor.getString(nameCol) ?: continue
+        cursor.use {
+            val idCol = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+            val nameCol = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+            val sizeCol = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+            val modCol = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+            val relCol = it.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
+            val dataCol = it.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+
+            while (it.moveToNext()) {
+                val name = it.getString(nameCol) ?: continue
                 if (!isUploadCandidate(name)) continue
-                val rel = cursor.getString(relCol)?.replace('\\', '/')?.trimStart('/')
-                    ?: cursor.getString(dataCol)?.let { path ->
-                        path.replace('\\', '/').substringAfter("DCIM/", "DJI Album/$name")
-                    }
-                    ?: "DJI Album/$name"
-                if (!rel.contains("DJI", ignoreCase = true)) continue
 
-                val size = cursor.getLong(sizeCol)
+                val rel = when {
+                    relCol >= 0 -> it.getString(relCol)?.replace('\\', '/')?.trimStart('/')
+                    else -> null
+                }
+                val dataPath = if (dataCol >= 0) it.getString(dataCol) else null
+                val pathForCheck = rel ?: dataPath?.replace('\\', '/') ?: ""
+                if (!isDjiAlbumPath(pathForCheck, name, dataPath)) continue
+
+                val relativePath = rel
+                    ?: dataPath?.replace('\\', '/')?.substringAfter("DCIM/", "DJI Album/$name")
+                    ?: "DJI Album/$name"
+
+                val size = it.getLong(sizeCol)
                 if (size <= 0) continue
-                val id = cursor.getLong(idCol)
+                val id = it.getLong(idCol)
                 val uri = ContentUris.withAppendedId(collection, id)
-                val modifiedSec = cursor.getLong(modCol)
+                val modifiedSec = it.getLong(modCol)
                 results += LocalMediaItem(
                     id = id,
                     displayName = name,
-                    relativePath = rel,
+                    relativePath = relativePath,
                     sizeBytes = size,
                     lastModifiedMs = modifiedSec * 1000L,
                     contentUri = uri,
@@ -116,27 +127,22 @@ class DjiAlbumScanner(private val context: Context) {
 
     private fun scanLegacyFolders(): List<LocalMediaItem> {
         val dcim = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-        val candidates = listOf(
-            File(dcim, "DJI Album"),
-            File(dcim, "DJI Album/"),
-        )
+        val root = File(dcim, "DJI Album")
+        if (!root.isDirectory) return emptyList()
         val results = mutableListOf<LocalMediaItem>()
-        for (root in candidates) {
-            if (!root.isDirectory) continue
-            root.walkTopDown().maxDepth(6).filter { it.isFile }.forEach { file ->
-                if (!isUploadCandidate(file.name)) return@forEach
-                val rel = file.absolutePath
-                    .replace('\\', '/')
-                    .substringAfter("/DCIM/", "DJI Album/${file.name}")
-                results += LocalMediaItem(
-                    id = file.absolutePath.hashCode().toLong(),
-                    displayName = file.name,
-                    relativePath = rel,
-                    sizeBytes = file.length(),
-                    lastModifiedMs = file.lastModified(),
-                    contentUri = android.net.Uri.fromFile(file),
-                )
-            }
+        root.walkTopDown().maxDepth(8).filter { it.isFile }.forEach { file ->
+            if (!isUploadCandidate(file.name)) return@forEach
+            val rel = file.absolutePath
+                .replace('\\', '/')
+                .substringAfter("/DCIM/", "DJI Album/${file.name}")
+            results += LocalMediaItem(
+                id = file.absolutePath.hashCode().toLong(),
+                displayName = file.name,
+                relativePath = rel,
+                sizeBytes = file.length(),
+                lastModifiedMs = file.lastModified(),
+                contentUri = Uri.fromFile(file),
+            )
         }
         return results
     }
