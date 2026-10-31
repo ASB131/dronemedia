@@ -49,6 +49,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.asbservers.dronemediacompanion.ui.components.MediaListItem
 import com.asbservers.dronemediacompanion.ui.components.MediaPreviewDialog
+import com.asbservers.dronemediacompanion.ui.components.UploadProgressCard
+import com.asbservers.dronemediacompanion.ui.formatBytes
 import com.asbservers.dronemediacompanion.ui.theme.DroneMediaTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -280,6 +282,10 @@ private fun LibraryStep(
         }
     }
 
+    state.uploadStats?.let { stats ->
+        UploadProgressCard(stats = stats)
+    }
+
     if (state.rows.isNotEmpty()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onSelectAllNew) { Text("Select new") }
@@ -364,9 +370,6 @@ private fun StatusFooter(state: CompanionUiState) {
     state.error?.let {
         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
-    if (state.uploading) {
-        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-    }
     Spacer(modifier = Modifier.height(4.dp))
 }
 
@@ -378,14 +381,3 @@ private fun LibraryStatus.label(): String = when (this) {
     LibraryStatus.SoftMatch -> "Possible duplicate"
 }
 
-private fun formatBytes(bytes: Long): String {
-    if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB")
-    var v = bytes.toDouble()
-    var u = 0
-    while (v >= 1024 && u < units.lastIndex) {
-        v /= 1024
-        u++
-    }
-    return if (u == 0) "${bytes} B" else String.format("%.1f %s", v, units[u])
-}

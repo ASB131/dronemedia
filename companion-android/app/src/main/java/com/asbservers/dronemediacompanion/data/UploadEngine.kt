@@ -11,19 +11,42 @@ class UploadEngine(
 
     fun uploadItems(
         items: List<LocalMediaItem>,
-        onFileProgress: (LocalMediaItem, Float) -> Unit,
+        onProgress: (
+            bytesUploaded: Long,
+            bytesTotal: Long,
+            currentItem: LocalMediaItem,
+            fileProgress: Float,
+            filesCompleted: Int,
+        ) -> Unit,
     ): Result<String> = runCatching {
         if (items.isEmpty()) error("Nothing to upload")
         val init = api.initBatch(items).getOrThrow()
+        val bytesTotal = items.sumOf { it.sizeBytes }
+        var bytesBeforeFile = 0L
+        var filesCompleted = 0
 
         init.files.zip(items).forEach { (session, item) ->
             val (path, temp) = fileAccess.resolvePath(item)
             try {
-                uploadOne(session, path.toFile(), item, onFileProgress)
+                uploadOne(session, path.toFile(), item) { fileProgress ->
+                    val fileDone = (item.sizeBytes * fileProgress).toLong()
+                    onProgress(
+                        bytesBeforeFile + fileDone,
+                        bytesTotal,
+                        item,
+                        fileProgress,
+                        filesCompleted,
+                    )
+                }
             } finally {
                 fileAccess.cleanupTemp(path, temp)
             }
+            bytesBeforeFile += item.sizeBytes
+            filesCompleted += 1
+            onProgress(bytesBeforeFile, bytesTotal, item, 1f, filesCompleted)
         }
+        val last = items.last()
+        onProgress(bytesTotal, bytesTotal, last, 1f, items.size)
         api.commitBatch(init.batchId).getOrThrow()
         init.batchId
     }

@@ -55,6 +55,7 @@ data class CompanionUiState(
     val error: String? = null,
     val rows: List<MediaRow> = emptyList(),
     val uploading: Boolean = false,
+    val uploadStats: UploadStats? = null,
     val previewItem: LocalMediaItem? = null,
 )
 
@@ -425,14 +426,54 @@ class CompanionViewModel(
                 _state.update { it.copy(error = "No new files selected") }
                 return@launch
             }
-            _state.update { it.copy(uploading = true, busyMessage = "Uploading…", error = null) }
+            val fileCount = selected.size
+            val bytesTotal = selected.sumOf { it.item.sizeBytes }
+            val speedSamples = mutableListOf<Pair<Long, Long>>()
+            _state.update {
+                it.copy(
+                    uploading = true,
+                    busyMessage = "Uploading…",
+                    error = null,
+                    uploadStats = UploadStats(
+                        bytesUploaded = 0,
+                        bytesTotal = bytesTotal,
+                        bytesPerSecond = 0.0,
+                        etaSeconds = null,
+                        currentFileName = selected.first().item.displayName,
+                        filesDone = 0,
+                        filesTotal = fileCount,
+                    ),
+                )
+            }
             val engine = UploadEngine(appContext, api)
             val result = withContext(Dispatchers.IO) {
-                engine.uploadItems(selected.map { it.item }) { item, progress ->
+                engine.uploadItems(selected.map { it.item }) {
+                        bytesUploaded,
+                        total,
+                        item,
+                        fileProgress,
+                        filesCompleted,
+                    ->
+                    val now = System.currentTimeMillis()
+                    speedSamples.add(now to bytesUploaded)
+                    while (speedSamples.size > 32) speedSamples.removeAt(0)
+                    val stats = computeUploadStats(
+                        bytesUploaded = bytesUploaded,
+                        bytesTotal = total,
+                        currentFileName = item.displayName,
+                        filesDone = filesCompleted,
+                        filesTotal = fileCount,
+                        speedSamples = speedSamples,
+                    )
                     _state.update { s ->
                         s.copy(
+                            uploadStats = stats,
                             rows = s.rows.map { row ->
-                                if (row.item.id == item.id) row.copy(uploadProgress = progress) else row
+                                if (row.item.id == item.id) {
+                                    row.copy(uploadProgress = fileProgress)
+                                } else {
+                                    row
+                                }
                             },
                         )
                     }
@@ -441,6 +482,7 @@ class CompanionViewModel(
             _state.update {
                 it.copy(
                     uploading = false,
+                    uploadStats = null,
                     busyMessage = null,
                     error = result.exceptionOrNull()?.message,
                     connectionMessage = result.fold(
