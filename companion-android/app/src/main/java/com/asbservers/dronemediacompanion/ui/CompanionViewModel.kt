@@ -11,7 +11,6 @@ import com.asbservers.dronemediacompanion.data.LocalMediaItem
 import com.asbservers.dronemediacompanion.data.ServerUrlNormalizer
 import com.asbservers.dronemediacompanion.data.SettingsStore
 import com.asbservers.dronemediacompanion.data.UploadEngine
-import com.asbservers.dronemediacompanion.data.XxHash64
 import com.asbservers.dronemediacompanion.data.parseBasename
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
