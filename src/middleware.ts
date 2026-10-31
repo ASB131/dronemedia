@@ -19,6 +19,19 @@ const PUBLIC_PREFIXES = [
   "/api/public",
 ];
 
+/** Companion connect + sign-in (no cookie yet). */
+const PUBLIC_COMPANION_PATHS = new Set([
+  "/api/companion/info",
+  "/api/companion/login",
+]);
+
+const BEARER_API_PREFIXES = ["/api/companion", "/api/upload"];
+
+function hasBearerAuthorization(req: Request): boolean {
+  const header = req.headers.get("authorization");
+  return header?.toLowerCase().startsWith("bearer ") ?? false;
+}
+
 /** Static asset extensions only — do not skip auth for every path containing ".". */
 const STATIC_FILE_EXT =
   /\.(?:css|js|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|txt|xml|webmanifest|mp4|webm|m3u8|ts)$/i;
@@ -29,8 +42,16 @@ export default auth((req) => {
 
   if (
     PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
+    PUBLIC_COMPANION_PATHS.has(pathname) ||
     pathname.startsWith("/_next") ||
     STATIC_FILE_EXT.test(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
+  if (
+    hasBearerAuthorization(req) &&
+    BEARER_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
   ) {
     return NextResponse.next();
   }
