@@ -76,6 +76,7 @@ fun CompanionApp(context: Context) {
                     value = state.serverUrl,
                     onValueChange = vm::updateServerUrl,
                     label = { Text("Server URL") },
+                    placeholder = { Text("https://your-drone-media.example") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )

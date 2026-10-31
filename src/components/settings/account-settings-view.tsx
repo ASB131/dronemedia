@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   Globe2,
   HardDrive,
+  KeyRound,
   MonitorSmartphone,
   Palette,
   Shield,
@@ -71,6 +72,13 @@ type DeviceRow = {
   deviceInfo: Record<string, unknown>;
 };
 
+type ApiKeyRow = {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
 function PrefToggle({
   label,
   description,
@@ -108,6 +116,10 @@ export function AccountSettingsView() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
+  const [apiKeyLabel, setApiKeyLabel] = useState("");
+  const [createdApiKeyRaw, setCreatedApiKeyRaw] = useState<string | null>(null);
+  const [creatingApiKey, setCreatingApiKey] = useState(false);
   const [pin, setPin] = useState("");
   const [pinPassword, setPinPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -118,6 +130,14 @@ export function AccountSettingsView() {
     if (devicesRes.ok) {
       const payload = (await devicesRes.json()) as { devices: DeviceRow[] };
       setDevices(payload.devices);
+    }
+  }
+
+  async function reloadApiKeys() {
+    const keysRes = await fetch("/api/account/security?view=keys");
+    if (keysRes.ok) {
+      const payload = (await keysRes.json()) as { keys: ApiKeyRow[] };
+      setApiKeys(payload.keys);
     }
   }
 
@@ -134,6 +154,7 @@ export function AccountSettingsView() {
       setAccount(payload);
       setDisplayName(payload.displayName ?? "");
       await reloadDevices();
+      await reloadApiKeys();
     })();
   }, []);
 
@@ -638,6 +659,129 @@ export function AccountSettingsView() {
                     Update password
                   </Button>
                 </form>
+              </section>
+
+              <section className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="size-4 text-muted-foreground" />
+                  <p className="text-sm font-semibold">Companion app API keys</p>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  For the Android companion app. Keys start with{" "}
+                  <span className="font-mono">dm_</span> — paste into the app
+                  with your site URL. The secret is shown once when created.
+                </p>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void (async () => {
+                      const label = apiKeyLabel.trim();
+                      if (!label) return;
+                      setCreatingApiKey(true);
+                      setError(null);
+                      setMessage(null);
+                      setCreatedApiKeyRaw(null);
+                      try {
+                        const response = await fetch("/api/account/security", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ label }),
+                        });
+                        const payload = (await response.json()) as {
+                          raw?: string;
+                          error?: string;
+                        };
+                        if (!response.ok) {
+                          setError(payload.error ?? "Failed to create API key");
+                          return;
+                        }
+                        setCreatedApiKeyRaw(payload.raw ?? null);
+                        setApiKeyLabel("");
+                        setMessage("API key created — copy it now");
+                        await reloadApiKeys();
+                      } finally {
+                        setCreatingApiKey(false);
+                      }
+                    })();
+                  }}
+                  className="mt-3 flex flex-wrap items-end gap-2"
+                >
+                  <div className="min-w-[12rem] flex-1">
+                    <Input
+                      placeholder="Label (e.g. My phone)"
+                      value={apiKeyLabel}
+                      onChange={(event) => setApiKeyLabel(event.target.value)}
+                      maxLength={64}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" size="sm" disabled={creatingApiKey}>
+                    {creatingApiKey ? "Creating…" : "Create API key"}
+                  </Button>
+                </form>
+                {createdApiKeyRaw ? (
+                  <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                    <p className="text-xs font-medium text-primary">
+                      Copy this key now — it will not be shown again
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <code className="block max-w-full break-all rounded-lg bg-background px-2 py-1.5 text-xs">
+                        {createdApiKeyRaw}
+                      </code>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(createdApiKeyRaw);
+                          setMessage("API key copied to clipboard");
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <ul className="mt-3 space-y-2">
+                  {apiKeys.map((key) => (
+                    <li
+                      key={key.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{key.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Created {new Date(key.createdAt).toLocaleString()}
+                          {key.lastUsedAt
+                            ? ` · Last used ${new Date(key.lastUsedAt).toLocaleString()}`
+                            : " · Never used"}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void (async () => {
+                            await fetch("/api/account/security", {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ type: "key", id: key.id }),
+                            });
+                            await reloadApiKeys();
+                            setMessage("API key revoked");
+                          })()
+                        }
+                      >
+                        Revoke
+                      </Button>
+                    </li>
+                  ))}
+                  {apiKeys.length === 0 ? (
+                    <li className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                      No API keys yet
+                    </li>
+                  ) : null}
+                </ul>
               </section>
 
               <section className="rounded-2xl border border-border bg-card p-4">

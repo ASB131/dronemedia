@@ -35,6 +35,6 @@ class SettingsStore(context: Context) {
         private const val KEY_SERVER = "server_url"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_WIFI_ONLY = "wifi_only"
-        const val DEFAULT_SERVER = "https://dronemedia.asb-servers.com"
+        const val DEFAULT_SERVER = ""
     }
 }

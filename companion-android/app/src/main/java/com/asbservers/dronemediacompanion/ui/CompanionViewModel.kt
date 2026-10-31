@@ -37,7 +37,7 @@ data class MediaRow(
 )
 
 data class CompanionUiState(
-    val serverUrl: String = SettingsStore.DEFAULT_SERVER,
+    val serverUrl: String = "",
     val apiKey: String = "",
     val wifiOnly: Boolean = true,
     val connectionMessage: String? = null,
