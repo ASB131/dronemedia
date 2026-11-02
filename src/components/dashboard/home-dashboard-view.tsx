@@ -18,12 +18,6 @@ function formatCount(value: number) {
   return new Intl.NumberFormat().format(value);
 }
 
-function formatDistance(meters: number) {
-  if (meters <= 0) return "—";
-  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-  return `${Math.round(meters)} m`;
-}
-
 function formatDuration(seconds: number) {
   if (seconds <= 0) return "—";
   const mins = Math.round(seconds / 60);
@@ -159,16 +153,10 @@ export function HomeDashboardView() {
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-          <StatBlock
-            label="Total distance"
-            value={formatDistance(stats.totalDistanceMeters)}
-          />
-          <StatBlock
-            label="Total flight time"
-            value={formatDuration(stats.totalDurationSeconds)}
-          />
-        </div>
+        <StatBlock
+          label="Total flight time"
+          value={formatDuration(stats.totalDurationSeconds)}
+        />
 
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -193,24 +181,12 @@ export function HomeDashboardView() {
           </div>
         </div>
 
-        <p className="hidden text-xs text-muted-foreground lg:block">
-          Map shows up to 10 most recent flights with GPS paths. Click a path
-          to open the flight.
-        </p>
       </section>
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">
-            Recent flights
-          </h2>
-          <Link
-            href="/map"
-            className="text-xs font-medium text-primary hover:underline"
-          >
-            Full map
-          </Link>
-        </div>
+        <h2 className="text-sm font-semibold text-foreground">
+          Recent flights
+        </h2>
         <RecentFlightPathsMap flights={recentFlightPaths} className="flex-1" />
       </section>
     </div>

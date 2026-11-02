@@ -9,7 +9,6 @@ export type DashboardStatsDto = {
   videoCount: number;
   panoramaCount: number;
   flightCount: number;
-  totalDistanceMeters: number;
   totalDurationSeconds: number;
 };
 
@@ -45,7 +44,6 @@ export async function getDashboardStats(
   const [flightRow] = await db
     .select({
       flightCount: sql<number>`count(*)::int`,
-      totalDistanceMeters: sql<number>`coalesce(sum(${flights.totalDistanceMeters}), 0)`,
       totalDurationSeconds: sql<number>`coalesce(sum(${flights.totalDurationSeconds}), 0)`,
     })
     .from(flights)
@@ -65,7 +63,6 @@ export async function getDashboardStats(
     videoCount: assetRow?.videoCount ?? 0,
     panoramaCount: assetRow?.panoramaCount ?? 0,
     flightCount: flightRow?.flightCount ?? 0,
-    totalDistanceMeters: Number(flightRow?.totalDistanceMeters ?? 0),
     totalDurationSeconds: Number(flightRow?.totalDurationSeconds ?? 0),
   };
 }
