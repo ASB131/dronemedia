@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -408,6 +409,22 @@ export function UploadZone() {
       {groupPreview.length > 0 &&
       (pendingFiles.length > 0 || batch.status !== "idle") ? (
         <UploadGroupPreviewList groups={groupPreview} />
+      ) : null}
+
+      {batch.status === "done" && failedCount === 0 ? (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+          <p className="text-sm font-medium">Import finished</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            New media is in your library. Open Photos to browse or find it on
+            the map when it has GPS.
+          </p>
+          <Link
+            href="/photos"
+            className="mt-3 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            Open Photos
+          </Link>
+        </div>
       ) : null}
 
       {batch.status !== "idle" ? (

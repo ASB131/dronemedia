@@ -10,6 +10,7 @@ import {
   AdminAuditPanel,
   AdminCachePanel,
   AdminJobsPanel,
+  AdminLibraryHealthStrip,
 } from "@/components/admin/admin-ops-panels";
 import { AdminSettingsPanel } from "@/components/admin/admin-settings-panel";
 import { AdminUsersPanel } from "@/components/admin/admin-users-panel";
@@ -39,6 +40,8 @@ export function AdminPanel() {
           jobs.
         </p>
       </div>
+
+      <AdminLibraryHealthStrip />
 
       <div className="flex flex-wrap gap-2">
         {tabs.map((entry) => (

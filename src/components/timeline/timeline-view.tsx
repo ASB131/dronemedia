@@ -976,17 +976,24 @@ export function TimelineView({
       ) : null}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {(stickyHeader.dayLabel ||
-          (!scrubVisible &&
-            (stickyHeader.year || stickyHeader.monthLabel))) && (
+        {(stickyHeader.year ||
+          stickyHeader.monthLabel ||
+          stickyHeader.dayLabel) && (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-border/70 bg-background/95 px-3 py-2 pr-14 backdrop-blur-md">
-            {!scrubVisible && stickyHeader.year ? (
+            {stickyHeader.year && !scrubVisible ? (
               <p className="text-2xl font-semibold tracking-tight">
                 {stickyHeader.year}
               </p>
             ) : null}
-            {!scrubVisible && stickyHeader.monthLabel ? (
-              <p className="text-sm font-medium text-primary">
+            {stickyHeader.monthLabel ? (
+              <p
+                className={cn(
+                  scrubVisible
+                    ? "text-sm font-semibold text-foreground"
+                    : "text-sm font-medium text-primary",
+                  stickyHeader.year && !scrubVisible && "mt-0.5",
+                )}
+              >
                 {stickyHeader.monthLabel}
               </p>
             ) : null}
@@ -994,10 +1001,10 @@ export function TimelineView({
               <p
                 className={cn(
                   "text-xs text-muted-foreground",
-                  !scrubVisible &&
-                    (stickyHeader.year || stickyHeader.monthLabel) &&
-                    "mt-0.5",
-                  scrubVisible && "text-sm font-medium text-foreground",
+                  (stickyHeader.monthLabel || stickyHeader.year) && "mt-0.5",
+                  scrubVisible &&
+                    !stickyHeader.monthLabel &&
+                    "text-sm font-medium text-foreground",
                 )}
               >
                 {stickyHeader.dayLabel}

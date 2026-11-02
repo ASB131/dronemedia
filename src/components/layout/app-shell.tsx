@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { CloudUpload, Menu, X } from "lucide-react";
+import { CloudUpload, Menu, Search, X } from "lucide-react";
 
 import { signOutAction } from "@/actions/auth";
 import { SiteMark } from "@/components/brand/site-mark";
@@ -16,6 +16,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UploadDock } from "@/components/upload/upload-dock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { pageTitleForPath } from "@/lib/navigation/page-titles";
 import { cn } from "@/lib/utils";
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0";
@@ -73,6 +74,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const cinemaMode = pathname === "/cinema";
+  const mobileTitle = pageTitleForPath(pathname);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [usedBytes, setUsedBytes] = useState<number | null>(null);
   const [quotaBytes, setQuotaBytes] = useState<number | null>(null);
@@ -258,12 +260,24 @@ export function AppShell({
             {mobileNavOpen ? <X className="size-6" /> : <Menu className="size-6" />}
           </Button>
           <SiteMark href="/" />
+          {mobileTitle ? (
+            <span className="truncate text-sm font-semibold md:hidden">
+              {mobileTitle}
+            </span>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 items-center gap-3 px-3 sm:px-4">
-          <div className="min-w-0 flex-1">
+          <div className="hidden min-w-0 flex-1 sm:block">
             <SearchBar />
           </div>
+          <Link
+            href="/search"
+            aria-label="Search"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-foreground hover:bg-muted sm:hidden"
+          >
+            <Search className="size-5" />
+          </Link>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Link
               href="/upload"

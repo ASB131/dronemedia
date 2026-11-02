@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
+    "test:unit": "node --import tsx --test workers/lib/gpx-parse.test.ts",
     "worker": "tsx workers/index.ts",
     "migrate": "tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",

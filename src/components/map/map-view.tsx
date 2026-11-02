@@ -693,6 +693,28 @@ export function MapView() {
     flights.length === 0 &&
     typeFilter === "all";
 
+  function fitMapToContent() {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+    const bounds: Array<[number, number]> = [];
+    for (const asset of assetsRef.current) {
+      bounds.push([asset.lat, asset.lng]);
+    }
+    for (const flight of flights) {
+      for (const [lng, lat] of flight.coordinates) {
+        bounds.push([lat, lng]);
+      }
+    }
+    for (const site of sites) {
+      bounds.push([site.lat, site.lng]);
+    }
+    if (bounds.length === 0) return;
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    fittedRef.current = true;
+    setPathRedrawToken((value) => value + 1);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -717,6 +739,15 @@ export function MapView() {
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={() => fitMapToContent()}
+          >
+            Fit map
+          </Button>
           <div className="flex overflow-hidden rounded-full border border-border text-xs font-medium">
             {(
               [

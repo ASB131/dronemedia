@@ -267,7 +267,7 @@ type LibraryHealth = {
   thumbnailIssues: number;
 };
 
-function AdminLibraryHealthStrip() {
+export function AdminLibraryHealthStrip() {
   const [health, setHealth] = useState<LibraryHealth | null>(null);
 
   useEffect(() => {
@@ -286,7 +286,13 @@ function AdminLibraryHealthStrip() {
     return () => window.clearInterval(timer);
   }, []);
 
-  if (!health) return null;
+  if (!health) {
+    return (
+      <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Checking library health…
+      </div>
+    );
+  }
 
   const chips = [
     health.stuckActiveJobs > 0

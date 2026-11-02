@@ -133,6 +133,11 @@ export function UtilitiesView() {
   const [hiddenFinishedJobKeys, setHiddenFinishedJobKeys] = useState<
     Set<string>
   >(() => new Set());
+  const [jobGates, setJobGates] = useState<{
+    webTranscoding: boolean;
+    panoramaStitch: boolean;
+  } | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   async function refreshJobs(options?: { quiet?: boolean }) {
     if (jobsInFlight.current) return;
@@ -199,6 +204,20 @@ export function UtilitiesView() {
         }
         setLocationDrafts(drafts);
       } else if (nextTab === "jobs") {
+        const [gatesRes, accountRes] = await Promise.all([
+          fetch("/api/jobs/gates"),
+          fetch("/api/account"),
+        ]);
+        if (gatesRes.ok) {
+          const gatesPayload = (await gatesRes.json()) as {
+            gates: { webTranscoding: boolean; panoramaStitch: boolean };
+          };
+          setJobGates(gatesPayload.gates);
+        }
+        if (accountRes.ok) {
+          const account = (await accountRes.json()) as { role?: string };
+          setIsAdmin(account.role === "admin");
+        }
         await refreshJobs();
       } else {
         const response = await fetch("/api/utilities?view=duplicates");
@@ -1154,6 +1173,24 @@ export function UtilitiesView() {
 
         {tab === "jobs" ? (
           <div className="space-y-4">
+            {jobGates && !jobGates.webTranscoding ? (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+                <p className="font-medium">Transcoding is paused server-wide</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  New videos may show “waiting for preview” until HLS generation
+                  is turned back on.
+                  {isAdmin ? (
+                    <>
+                      {" "}
+                      <Link href="/admin" className="font-medium text-primary hover:underline">
+                        Admin → Jobs
+                      </Link>{" "}
+                      to re-enable.
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            ) : null}
             {loading && !jobs ? (
               <p className="text-sm text-muted-foreground">Loading jobs…</p>
             ) : !jobs ? (
