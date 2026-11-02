@@ -81,6 +81,7 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 - **Photos**: Web preview from cache; download uses full originals
 - **Panoramas**: stitch, 360° viewer, heading when EXIF/DJI yaw is present
 - **Flights**: grouped clips with path map, altitude graph, and media strip
+- **3D flight replay**: on asset detail, toggle **Map / 3D** to scrub the path on a globe (MapTiler terrain or optional `CESIUM_ION_ACCESS_TOKEN`)
 - **Community**: public profiles and a shared map (`/community`, `/u/{username}`)
 - **Admin**: users, invites, settings, integrity, storage, backups, jobs
 

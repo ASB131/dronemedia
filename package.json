@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "build": "node scripts/copy-cesium-assets.mjs && next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "test:unit": "node --import tsx --test workers/lib/gpx-parse.test.ts",
@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:backfill-playback-flags": "tsx scripts/backfill-playback-flags.ts",
     "repair-cross-attached-sidecars": "tsx scripts/repair-cross-attached-sidecars.ts",
-    "reset-admin": "tsx scripts/reset-admin.ts"
+    "reset-admin": "tsx scripts/reset-admin.ts",
+    "postinstall": "node scripts/copy-cesium-assets.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
@@ -28,6 +29,7 @@
     "archiver": "^8.0.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.0.6",
+    "cesium": "^1.147.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
