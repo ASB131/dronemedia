@@ -733,6 +733,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
   const has3dFlightPath =
     series.length > 1 ||
     (telemetry?.flightPath?.coordinates.length ?? 0) > 1;
+  const focus3dGlobe = locationViewMode === "3d" && has3dFlightPath;
 
   const droneFlightSummary = [
     asset.droneName,
@@ -908,7 +909,151 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               <p className="text-sm text-white/80">Loading…</p>
             </div>
           ) : null}
-          {viewerMode === "photo" && asset.assetType === "photo" ? (
+          {has3dFlightPath ? (
+            <div
+              className="absolute left-3 top-3 z-30 flex rounded-lg border border-white/20 bg-black/60 p-0.5 shadow-lg backdrop-blur-sm"
+              role="group"
+              aria-label="Map view mode"
+            >
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  locationViewMode === "2d"
+                    ? "bg-white text-black"
+                    : "text-white/80 hover:text-white"
+                }`}
+                aria-pressed={locationViewMode === "2d"}
+                onClick={() => {
+                  setLocationViewMode("2d");
+                  sessionStorage.setItem(ASSET_MAP_MODE_KEY, "2d");
+                }}
+              >
+                <Map className="size-3.5" aria-hidden />
+                Video
+              </button>
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  locationViewMode === "3d"
+                    ? "bg-white text-black"
+                    : "text-white/80 hover:text-white"
+                }`}
+                aria-pressed={locationViewMode === "3d"}
+                onClick={() => {
+                  setLocationViewMode("3d");
+                  sessionStorage.setItem(ASSET_MAP_MODE_KEY, "3d");
+                }}
+              >
+                <Globe2 className="size-3.5" aria-hidden />
+                3D flight
+              </button>
+            </div>
+          ) : null}
+          {focus3dGlobe ? (
+            <>
+              <FlightPath3DViewer
+                series={series}
+                flightPath={telemetry?.flightPath ?? null}
+                currentOffsetMs={currentTime * 1000}
+                homePoint={telemetry?.homePoint ?? null}
+                className="absolute inset-0 size-full"
+                hideTerrainHint
+              />
+              <div className="absolute bottom-3 right-3 z-30 flex w-[min(420px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-xl border border-white/15 bg-black/90 shadow-2xl ring-1 ring-white/10">
+                <p className="shrink-0 border-b border-white/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-white/60">
+                  Media
+                </p>
+                <div className="relative aspect-video w-full bg-black">
+                  {viewerMode === "photo" && asset.assetType === "photo" ? (
+                    <PhotoViewer
+                      key={`${asset.id}-photo-pip`}
+                      src={mediaUrl}
+                      sourceSrc={photoSourceUrl}
+                      alt={asset.displayName}
+                      lutId={effectiveLutId}
+                      className="absolute inset-0 size-full"
+                    />
+                  ) : viewerMode === "180" &&
+                    (asset.assetType === "photo" || isPanorama) &&
+                    playbackReady ? (
+                    <PhotoViewer
+                      key={`${asset.id}-180-pip`}
+                      src={panoUrl}
+                      sourceSrc={photoSourceUrl}
+                      alt={asset.displayName}
+                      lutId={effectiveLutId}
+                      className="absolute inset-0 size-full"
+                    />
+                  ) : viewerMode === "360" &&
+                    (asset.assetType === "photo" || isPanorama) &&
+                    playbackReady ? (
+                    <PanoramaViewer
+                      key={`${asset.id}-360-pip`}
+                      src={panoUrl}
+                      poseHeadingDegrees={
+                        asset.mediaMetadata?.kind === "photo"
+                          ? effectivePanoramaPoseHeading(asset.mediaMetadata)
+                          : null
+                      }
+                      onLookHeadingChange={setLookHeadingDegrees}
+                      yawDegreesRef={panoYawDegreesRef}
+                      className="absolute inset-0 size-full"
+                    />
+                  ) : viewerMode === "photo" && isPanorama && playbackReady ? (
+                    <PhotoViewer
+                      key={`${asset.id}-pano-flat-pip`}
+                      src={panoUrl}
+                      sourceSrc={photoSourceUrl}
+                      alt={asset.displayName}
+                      lutId={effectiveLutId}
+                      className="absolute inset-0 size-full"
+                    />
+                  ) : !isPanorama &&
+                    asset.assetType !== "photo" &&
+                    playbackReady ? (
+                    <VideoPlayer
+                      src={mediaUrl}
+                      hlsSrc={
+                        playbackPrefs.previewQualitiesDisabled ? null : hlsUrl
+                      }
+                      sourceSrc={videoSourceUrl}
+                      defaultResolution={
+                        playbackPrefs.previewQualitiesDisabled &&
+                        allowInAppSource
+                          ? "source"
+                          : allowInAppSource
+                            ? playbackPrefs.defaultPlaybackResolution
+                            : playbackPrefs.defaultPlaybackResolution ===
+                                "source"
+                              ? ((playbackPrefs.enabledPreviewHeights[
+                                  playbackPrefs.enabledPreviewHeights.length -
+                                    1
+                                ]?.toString() ?? "1080") as
+                                  | "720"
+                                  | "1080"
+                                  | "1440")
+                              : playbackPrefs.defaultPlaybackResolution
+                      }
+                      enabledHeights={playbackPrefs.enabledPreviewHeights}
+                      previewQualitiesDisabled={
+                        playbackPrefs.previewQualitiesDisabled &&
+                        !allowInAppSource
+                      }
+                      lutId={effectiveLutId}
+                      scrubberMarkers={scrubberMarkers}
+                      seekRequest={seekRequest}
+                      onTimeUpdate={(time) => setCurrentTime(time)}
+                      className="absolute inset-0 size-full object-contain"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-white/60">
+                      Preparing playback…
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : viewerMode === "photo" && asset.assetType === "photo" ? (
             <PhotoViewer
               key={`${asset.id}-photo`}
               src={mediaUrl}
@@ -1856,49 +2001,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
 
           <div className="shrink-0 border-t border-border bg-background p-3 sm:p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <p className="text-sm font-semibold tracking-tight">Location</p>
-                {has3dFlightPath ? (
-                  <div
-                    className="flex shrink-0 rounded-lg border border-border p-0.5"
-                    role="group"
-                    aria-label="Map view mode"
-                  >
-                    <button
-                      type="button"
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                        locationViewMode === "2d"
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      aria-pressed={locationViewMode === "2d"}
-                      onClick={() => {
-                        setLocationViewMode("2d");
-                        sessionStorage.setItem(ASSET_MAP_MODE_KEY, "2d");
-                      }}
-                    >
-                      <Map className="size-3" aria-hidden />
-                      Map
-                    </button>
-                    <button
-                      type="button"
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                        locationViewMode === "3d"
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      aria-pressed={locationViewMode === "3d"}
-                      onClick={() => {
-                        setLocationViewMode("3d");
-                        sessionStorage.setItem(ASSET_MAP_MODE_KEY, "3d");
-                      }}
-                    >
-                      <Globe2 className="size-3" aria-hidden />
-                      3D
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              <p className="text-sm font-semibold tracking-tight">Location</p>
               {placeLabel || countryLabel ? (
                 <p className="truncate text-xs text-muted-foreground">
                   {[placeLabel, countryLabel].filter(Boolean).join(", ")}
@@ -1907,39 +2010,27 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             </div>
             {hasMap ? (
               <>
-                {locationViewMode === "3d" && has3dFlightPath ? (
-                  <FlightPath3DViewer
-                    series={series}
-                    flightPath={telemetry?.flightPath ?? null}
-                    currentOffsetMs={currentTime * 1000}
-                    homePoint={telemetry?.homePoint ?? null}
-                    className="aspect-square w-full"
-                  />
-                ) : (
-                  <FlightPathPreview
-                    flightPath={telemetry?.flightPath ?? null}
-                    currentPosition={
-                      cursor
-                        ? { lat: cursor.lat, lng: cursor.lng }
-                        : asset.location
-                          ? {
-                              lat: asset.location.lat,
-                              lng: asset.location.lng,
-                            }
-                          : null
-                    }
-                    headingDegrees={
-                      lookHeadingDegrees ??
-                      (asset.mediaMetadata?.kind === "photo"
-                        ? effectivePanoramaPoseHeading(asset.mediaMetadata)
-                        : null)
-                    }
-                    markerKind={
-                      asset.assetType === "photo" ? "photo" : "drone"
-                    }
-                    className="aspect-square w-full overflow-hidden rounded-xl"
-                  />
-                )}
+                <FlightPathPreview
+                  flightPath={telemetry?.flightPath ?? null}
+                  currentPosition={
+                    cursor
+                      ? { lat: cursor.lat, lng: cursor.lng }
+                      : asset.location
+                        ? {
+                            lat: asset.location.lat,
+                            lng: asset.location.lng,
+                          }
+                        : null
+                  }
+                  headingDegrees={
+                    lookHeadingDegrees ??
+                    (asset.mediaMetadata?.kind === "photo"
+                      ? effectivePanoramaPoseHeading(asset.mediaMetadata)
+                      : null)
+                  }
+                  markerKind={asset.assetType === "photo" ? "photo" : "drone"}
+                  className="aspect-square w-full overflow-hidden rounded-xl"
+                />
                 {series.length > 1 ? (
                   <AltitudeGraph
                     series={series}

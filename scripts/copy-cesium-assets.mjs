@@ -12,6 +12,7 @@ if (!existsSync(cesiumBuild)) {
 }
 
 const dirs = ["Assets", "ThirdParty", "Workers", "Widgets"];
+const files = ["Cesium.js"];
 if (existsSync(dest)) {
   rmSync(dest, { recursive: true, force: true });
 }
@@ -19,6 +20,9 @@ mkdirSync(dest, { recursive: true });
 
 for (const dir of dirs) {
   cpSync(join(cesiumBuild, dir), join(dest, dir), { recursive: true });
+}
+for (const file of files) {
+  cpSync(join(cesiumBuild, file), join(dest, file));
 }
 
 console.log("copy-cesium-assets: copied Cesium runtime assets to public/cesium");

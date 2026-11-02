@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGlobeConfig } from "@/hooks/use-globe-config";
 import type { LineStringGeoJson } from "@/lib/assets/telemetry";
 import type { TelemetrySeriesPoint } from "@/lib/assets/telemetry";
+import { loadCesium, type CesiumNamespace } from "@/lib/map/cesium-loader";
 import {
   headingFromSeries,
   interpolateSeriesAtOffsetMs,
@@ -18,9 +19,9 @@ type Props = {
   currentOffsetMs: number;
   homePoint?: { lat: number; lng: number } | null;
   className?: string;
+  /** Hide MapTiler flat-terrain hint (e.g. when overlaid on dark stage). */
+  hideTerrainHint?: boolean;
 };
-
-const CESIUM_BASE = "/cesium/";
 
 export function FlightPath3DViewer({
   series,
@@ -28,12 +29,14 @@ export function FlightPath3DViewer({
   currentOffsetMs,
   homePoint,
   className,
+  hideTerrainHint = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<import("cesium").Viewer | null>(null);
-  const droneEntityRef = useRef<import("cesium").Entity | null>(null);
-  const pathEntityRef = useRef<import("cesium").Entity | null>(null);
-  const homeEntityRef = useRef<import("cesium").Entity | null>(null);
+  const viewerRef = useRef<InstanceType<CesiumNamespace["Viewer"]> | null>(null);
+  const droneEntityRef = useRef<InstanceType<CesiumNamespace["Entity"]> | null>(
+    null,
+  );
+  const cesiumRef = useRef<CesiumNamespace | null>(null);
   const initializedRef = useRef(false);
   const globeConfig = useGlobeConfig();
   const [initError, setInitError] = useState<string | null>(null);
@@ -49,11 +52,8 @@ export function FlightPath3DViewer({
 
     async function initViewer() {
       try {
-        (window as unknown as { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
-          CESIUM_BASE;
-
-        const Cesium = await import("cesium");
-        await import("cesium/Build/Cesium/Widgets/widgets.css");
+        const Cesium = await loadCesium();
+        cesiumRef.current = Cesium;
 
         if (disposed || !containerRef.current) return;
 
@@ -61,7 +61,7 @@ export function FlightPath3DViewer({
           Cesium.Ion.defaultAccessToken = globeConfig.cesiumIonAccessToken;
         }
 
-        let terrainProvider: import("cesium").TerrainProvider;
+        let terrainProvider: InstanceType<CesiumNamespace["TerrainProvider"]>;
         if (globeConfig.terrainMode === "cesium-ion") {
           terrainProvider = await Cesium.createWorldTerrainAsync();
         } else if (
@@ -75,7 +75,8 @@ export function FlightPath3DViewer({
           terrainProvider = new Cesium.EllipsoidTerrainProvider();
         }
 
-        const imageryLayers: import("cesium").ImageryLayer[] = [];
+        const imageryLayers: InstanceType<CesiumNamespace["ImageryLayer"]>[] =
+          [];
         if (globeConfig.terrainMode !== "cesium-ion") {
           const imagery = new Cesium.UrlTemplateImageryProvider({
             url: globeConfig.imageryUrlTemplate,
@@ -117,19 +118,21 @@ export function FlightPath3DViewer({
               []);
 
         if (heights.length >= 6) {
-          pathEntityRef.current = viewer.entities.add({
+          viewer.entities.add({
             name: "Flight path",
             polyline: {
               positions: Cesium.Cartesian3.fromDegreesArrayHeights(heights),
               width: 4,
-              material: Cesium.Color.fromCssColorString("#4250AF").withAlpha(0.95),
+              material: Cesium.Color.fromCssColorString("#4250AF").withAlpha(
+                0.95,
+              ),
               clampToGround: false,
             },
           });
         }
 
         if (homePoint) {
-          homeEntityRef.current = viewer.entities.add({
+          viewer.entities.add({
             name: "Home",
             position: Cesium.Cartesian3.fromDegrees(
               homePoint.lng,
@@ -203,8 +206,7 @@ export function FlightPath3DViewer({
       viewerRef.current?.destroy();
       viewerRef.current = null;
       droneEntityRef.current = null;
-      pathEntityRef.current = null;
-      homeEntityRef.current = null;
+      cesiumRef.current = null;
       initializedRef.current = false;
       setViewerReady(false);
     };
@@ -214,42 +216,36 @@ export function FlightPath3DViewer({
   useEffect(() => {
     const viewer = viewerRef.current;
     const drone = droneEntityRef.current;
-    if (!viewer || !drone || !viewerReady) return;
+    const Cesium = cesiumRef.current;
+    if (!viewer || !drone || !Cesium || !viewerReady) return;
 
-    void (async () => {
-      const Cesium = await import("cesium");
-      const pos =
-        interpolateSeriesAtOffsetMs(series, currentOffsetMs) ??
-        (flightPath?.coordinates.length
-          ? {
-              lat: flightPath.coordinates[0]![1],
-              lng: flightPath.coordinates[0]![0],
-              altMeters: 0,
-            }
-          : null);
+    const pos =
+      interpolateSeriesAtOffsetMs(series, currentOffsetMs) ??
+      (flightPath?.coordinates.length
+        ? {
+            lat: flightPath.coordinates[0]![1],
+            lng: flightPath.coordinates[0]![0],
+            altMeters: 0,
+          }
+        : null);
 
-      if (!pos) return;
+    if (!pos) return;
 
-      drone.position = new Cesium.ConstantPositionProperty(
-        Cesium.Cartesian3.fromDegrees(pos.lng, pos.lat, pos.altMeters),
+    drone.position = new Cesium.ConstantPositionProperty(
+      Cesium.Cartesian3.fromDegrees(pos.lng, pos.lat, pos.altMeters),
+    );
+
+    const heading = headingFromSeries(series, currentOffsetMs);
+    if (heading != null) {
+      drone.orientation = new Cesium.ConstantProperty(
+        Cesium.Transforms.headingPitchRollQuaternion(
+          Cesium.Cartesian3.fromDegrees(pos.lng, pos.lat, pos.altMeters),
+          new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(heading), 0, 0),
+        ),
       );
+    }
 
-      const heading = headingFromSeries(series, currentOffsetMs);
-      if (heading != null) {
-        drone.orientation = new Cesium.ConstantProperty(
-          Cesium.Transforms.headingPitchRollQuaternion(
-            Cesium.Cartesian3.fromDegrees(pos.lng, pos.lat, pos.altMeters),
-            new Cesium.HeadingPitchRoll(
-              Cesium.Math.toRadians(heading),
-              0,
-              0,
-            ),
-          ),
-        );
-      }
-
-      viewer.scene.requestRender();
-    })();
+    viewer.scene.requestRender();
   }, [series, currentOffsetMs, flightPath, viewerReady]);
 
   if (initError) {
@@ -266,17 +262,17 @@ export function FlightPath3DViewer({
   }
 
   return (
-    <div className={cn("relative overflow-hidden rounded-xl", className)}>
-      <div ref={containerRef} className="h-full w-full min-h-[240px]" />
+    <div className={cn("relative overflow-hidden", className)}>
+      <div ref={containerRef} className="h-full w-full min-h-[200px]" />
       {globeConfig.loading || !viewerReady ? (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/40 text-xs text-muted-foreground">
           Loading 3D globe…
         </div>
       ) : null}
-      {globeConfig.usingFallbackTerrain && viewerReady ? (
+      {globeConfig.usingFallbackTerrain && viewerReady && !hideTerrainHint ? (
         <p className="pointer-events-none absolute bottom-1 left-2 right-2 text-[10px] text-muted-foreground/90">
-          Flat terrain — set MapTiler in Settings → Map or add CESIUM_ION_ACCESS_TOKEN
-          for hills.
+          Flat terrain — set MapTiler in config.yml (map.provider + apiKey) for
+          hills.
         </p>
       ) : null}
     </div>
