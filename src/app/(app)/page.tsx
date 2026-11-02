@@ -1,5 +1,5 @@
-import { TimelineView } from "@/components/timeline/timeline-view";
+import { HomeDashboardView } from "@/components/dashboard/home-dashboard-view";
 
 export default function HomePage() {
-  return <TimelineView />;
+  return <HomeDashboardView />;
 }

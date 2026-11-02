@@ -213,11 +213,11 @@ export function UploadDock() {
                   {importHighlight.displayName}
                 </p>
                 <Link
-                  href="/"
+                  href="/photos"
                   className="mt-1.5 inline-block text-[11px] font-medium text-primary hover:underline"
                   onClick={() => clearImportHighlight()}
                 >
-                  View on timeline
+                  View in photos
                 </Link>
               </div>
             ) : null}

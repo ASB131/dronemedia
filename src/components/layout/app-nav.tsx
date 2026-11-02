@@ -7,6 +7,7 @@ import {
   Archive,
   Globe2,
   Heart,
+  Home,
   Image as ImageIcon,
   Map,
   Plane,
@@ -33,7 +34,8 @@ const navSections: NavSection[] = [
   {
     title: null,
     items: [
-      { label: "Photos", href: "/", icon: ImageIcon },
+      { label: "Home", href: "/", icon: Home },
+      { label: "Photos", href: "/photos", icon: ImageIcon },
       { label: "Map", href: "/map", icon: Map },
     ],
   },

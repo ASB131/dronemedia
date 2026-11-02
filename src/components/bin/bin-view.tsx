@@ -366,10 +366,10 @@ export function BinView() {
               </p>
               {items.length === 0 ? (
                 <Link
-                  href="/"
+                  href="/photos"
                   className="mt-2 text-xs text-muted-foreground underline-offset-2 hover:underline"
                 >
-                  Back to timeline
+                  Back to photos
                 </Link>
               ) : null}
             </div>

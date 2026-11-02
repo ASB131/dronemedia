@@ -548,7 +548,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       setError("Failed to move asset to bin");
       return;
     }
-    router.push("/");
+    router.push("/photos");
   }
 
   async function patch(body: Record<string, unknown>) {
@@ -651,10 +651,10 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8">
         <p className="text-sm text-destructive">{error}</p>
         <Link
-          href="/"
+          href="/photos"
           className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-muted"
         >
-          Back to timeline
+          Back to photos
         </Link>
       </div>
     );
@@ -773,7 +773,7 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               router.back();
               return;
             }
-            router.replace(getMediaReturnPath() ?? "/");
+            router.replace(getMediaReturnPath() ?? "/photos");
           }}
           className="inline-flex size-10 items-center justify-center rounded-full hover:bg-muted"
         >

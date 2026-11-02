@@ -167,8 +167,8 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
             <p className="text-sm text-muted-foreground">
               No assets in this album yet.
             </p>
-            <Link href="/" className="text-sm text-primary hover:underline">
-              Add from the timeline
+            <Link href="/photos" className="text-sm text-primary hover:underline">
+              Add from photos
             </Link>
           </div>
         ) : (

@@ -755,8 +755,8 @@ export function MapView() {
               No geotagged media yet. Upload videos with SRT sidecars or add GPS
               metadata to see assets on the map.
             </p>
-            <Link href="/" className="text-sm text-primary hover:underline">
-              Back to timeline
+            <Link href="/photos" className="text-sm text-primary hover:underline">
+              Back to photos
             </Link>
           </div>
         ) : (

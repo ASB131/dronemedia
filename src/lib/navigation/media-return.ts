@@ -43,7 +43,7 @@ export function saveTimelineScrollPosition(params: {
       scrollKey(params.favoritesOnly),
       JSON.stringify(payload),
     );
-    setMediaReturnPath(params.favoritesOnly ? "/favorites" : "/");
+    setMediaReturnPath(params.favoritesOnly ? "/favorites" : "/photos");
   } catch {
     // ignore
   }
@@ -76,7 +76,7 @@ export function clearTimelineScrollPosition(favoritesOnly: boolean) {
   }
 }
 
-/** After import, open the home timeline scrolled to a new asset. */
+/** After import, open the photos timeline scrolled to a new asset. */
 export function primeTimelineFocusAfterImport(assetId: string) {
   saveTimelineScrollPosition({
     scrollTop: 0,

@@ -20,8 +20,7 @@ export default function AppError({
     <div className="flex h-full min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
       <h1 className="text-lg font-semibold tracking-tight">Something went wrong</h1>
       <p className="max-w-md text-sm text-muted-foreground">
-        This page hit an unexpected error. You can retry or head back to the
-        timeline.
+        This page hit an unexpected error. You can retry or head back home.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Button type="button" size="sm" onClick={() => reset()}>
