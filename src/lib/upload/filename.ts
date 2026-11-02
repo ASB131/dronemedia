@@ -22,7 +22,7 @@ const PHOTO_EXTENSIONS = new Set([
   "heif",
 ]);
 
-const TELEMETRY_EXTENSIONS = new Set(["srt"]);
+const TELEMETRY_EXTENSIONS = new Set(["srt", "gpx"]);
 const PROXY_EXTENSIONS = new Set(["lrf"]);
 
 export type ParsedFilename = {

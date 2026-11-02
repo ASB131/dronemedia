@@ -287,7 +287,7 @@ export function CommunityView() {
                 <Users className="size-8 text-muted-foreground/70" />
                 <p className="text-sm font-medium">No public portfolios yet</p>
                 <p className="max-w-md text-xs text-muted-foreground">
-                  Mark photos or videos as Public from the timeline or asset page
+                  Mark photos or videos as Public from Photos or an asset page
                   to appear here.
                 </p>
               </div>

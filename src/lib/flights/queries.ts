@@ -439,6 +439,46 @@ export type FlightSummaryDto = {
   location: { lat: number; lng: number } | null;
 };
 
+/** Combined GPS paths for many flights in one query (dashboard map). */
+export async function getCombinedPathsForFlightIds(
+  userId: string,
+  flightIds: string[],
+): Promise<Map<string, Array<[number, number]>>> {
+  const result = new Map<string, Array<[number, number]>>();
+  if (flightIds.length === 0) return result;
+
+  const db = getWebDb();
+  const rows = await db
+    .select({
+      flightId: assets.flightId,
+      pathJson: sql<string | null>`ST_AsGeoJSON(${flightTelemetry.flightPath})`,
+      sortAt: sql<Date>`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`,
+    })
+    .from(assets)
+    .innerJoin(flights, eq(flights.id, assets.flightId))
+    .innerJoin(flightTelemetry, eq(flightTelemetry.assetId, assets.id))
+    .where(
+      and(
+        eq(flights.userId, userId),
+        inArray(assets.flightId, flightIds),
+        isNull(assets.deletedAt),
+        sql`${flightTelemetry.flightPath} is not null`,
+      ),
+    )
+    .orderBy(asc(assets.flightId), asc(sql`coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt})`));
+
+  for (const row of rows) {
+    if (!row.flightId || !row.pathJson) continue;
+    const geo = JSON.parse(row.pathJson) as {
+      coordinates?: Array<[number, number]>;
+    };
+    const list = result.get(row.flightId) ?? [];
+    for (const coord of geo.coordinates ?? []) list.push(coord);
+    result.set(row.flightId, list);
+  }
+  return result;
+}
+
 export async function listFlightsForUser(
   userId: string,
 ): Promise<FlightSummaryDto[]> {

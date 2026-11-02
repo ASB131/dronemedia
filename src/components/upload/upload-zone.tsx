@@ -248,7 +248,7 @@ export function UploadZone() {
         <h1 className="text-2xl font-semibold tracking-tight">Upload</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Import from an SD card or drone, or drop files below. Linked
-          basenames (video + SRT/LRF) and hyperlapse/panorama folders are
+          basenames (video + SRT/GPX/LRF) and hyperlapse/panorama folders are
           grouped. Panoramas pair PANORAMA/100_XXXX tiles with
           100MEDIA/DJI_XXXX.JPG when both are present — or when uploaded at
           different times (stitch first, tiles later).

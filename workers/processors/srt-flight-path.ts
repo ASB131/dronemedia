@@ -22,6 +22,7 @@ import {
 import { publishJobEvent } from "@/lib/jobs/enqueue";
 import { JOB_NAMES, type AssetJobData } from "@/lib/jobs/types";
 import { getLogger } from "@/lib/logger";
+import { parseGpx } from "../lib/gpx-parse";
 import {
   parseSrt,
   pickRepresentativeSrtCamera,
@@ -83,13 +84,25 @@ export function createSrtFlightPathWorker(connection: { url: string }) {
         timestamp: new Date().toISOString(),
       });
 
+      let parserId = "unknown";
+      let points: ParsedSrtPoint[] = [];
       const srtBuffer = await readMediaFile(userId, assetId, "srt");
-      if (!srtBuffer) {
-        await markParseFailed(assetId);
-        throw new Error("SRT sidecar file not found");
+      if (srtBuffer) {
+        const parsed = parseSrt(srtBuffer.toString("utf8"));
+        parserId = parsed.parserId;
+        points = parsed.points;
+      } else {
+        const gpxBuffer = await readMediaFile(userId, assetId, "gpx");
+        if (!gpxBuffer) {
+          await markParseFailed(assetId);
+          throw new Error("Telemetry sidecar file not found");
+        }
+        parserId = "gpx";
+        points = parseGpx(gpxBuffer.toString("utf8")).map((point) => ({
+          ...point,
+          camera: null,
+        }));
       }
-
-      const { parserId, points } = parseSrt(srtBuffer.toString("utf8"));
 
       if (points.length === 0) {
         await markParseFailed(assetId);

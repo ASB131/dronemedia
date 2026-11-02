@@ -777,7 +777,7 @@ export function TimelineView({
             ? "Mark assets as favorites to see them here."
             : mediaType !== "all"
               ? "No media matches this filter."
-              : "Upload drone photos and videos to populate your timeline."}
+              : "Upload drone photos and videos to populate Photos."}
         </p>
       </div>
     );

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PreviewLutPicker } from "@/components/assets/preview-lut-picker";
+import { PortfolioSettingsPanel } from "@/components/settings/portfolio-settings-panel";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -412,6 +413,16 @@ export function AccountSettingsView() {
                   >
                     Save profile
                   </Button>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-sm font-semibold">Public page layout</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Cover, featured albums, and showcase media on your profile.
+                </p>
+                <div className="mt-4">
+                  <PortfolioSettingsPanel username={account.username} />
                 </div>
               </section>
 

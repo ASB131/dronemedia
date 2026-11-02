@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import { MediaGridSkeleton } from "@/components/ui/skeletons";
+import { DroneMaintenancePanel } from "@/components/drones/drone-maintenance-panel";
 import type { DroneAssetDto, DroneDto } from "@/lib/drones/queries";
 
 const DRONE_ASSETS_PAGE = 48;
@@ -340,6 +341,8 @@ export function DronesPanel() {
               />
             </div>
           </section>
+
+          <DroneMaintenancePanel droneId={selected.id} />
 
           {editing ? (
             <form

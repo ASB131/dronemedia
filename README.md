@@ -11,7 +11,7 @@
 
 ## What it is
 
-Drone Media is a multi-user web app for aerial media at home. Import from an SD card or folder, keep MP4 + SRT (+ LRF) grouped together, then browse a timeline, map, and flights with regenerable previews and HLS playback. Mark media public for Community profiles.
+Drone Media is a multi-user web app for aerial media at home. Import from an SD card or folder, keep MP4 + SRT or GPX (+ optional LRF) grouped together, then browse a **Home** dashboard, **Photos** library, map, and flights with regenerable previews and HLS playback. Mark media public for Community profiles.
 
 ## Who it’s for
 
@@ -21,9 +21,13 @@ Drone Media is a multi-user web app for aerial media at home. Import from an SD 
 
 ## Screenshots
 
-### Timeline
+### Home
 
-Date-grouped library with type filters and media badges on each tile.
+Library stats, quick actions, and recent flight paths on a map.
+
+### Photos
+
+Date-grouped library with type filters and media badges on each tile (`/photos`).
 
 ![Library timeline](docs/screenshots/timeline.png)
 
@@ -71,8 +75,8 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 
 ## Features
 
-- **Library**: timeline, map, flights, albums, drones, favorites, bin
-- **Upload**: chunked uploads with basename grouping (MP4 + SRT + LRF) and a progress dock
+- **Library**: home dashboard, photos grid (`/photos`), map (with site pins), flights, albums, drones, favorites, bin
+- **Upload**: chunked uploads with basename grouping (MP4 + SRT or GPX + LRF) and a progress dock
 - **Playback**: HLS from cache; Source plays the original when allowed
 - **Photos**: Web preview from cache; download uses full originals
 - **Panoramas**: stitch, 360° viewer, heading when EXIF/DJI yaw is present

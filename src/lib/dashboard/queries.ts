@@ -2,7 +2,10 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { getWebDb } from "@/lib/db";
 import { assets, flights } from "@/lib/db/schema";
-import { getFlightForUser, listFlightsForUser } from "@/lib/flights/queries";
+import {
+  getCombinedPathsForFlightIds,
+  listFlightsForUser,
+} from "@/lib/flights/queries";
 
 export type DashboardStatsDto = {
   photoCount: number;
@@ -72,12 +75,16 @@ export async function listRecentFlightPathsForUser(
   limit = RECENT_PATH_LIMIT,
 ): Promise<DashboardFlightPathDto[]> {
   const ordered = await listFlightsForUser(userId);
-  const recentFlightPaths: DashboardFlightPathDto[] = [];
+  const scan = ordered.slice(0, RECENT_PATH_SCAN);
+  const pathMap = await getCombinedPathsForFlightIds(
+    userId,
+    scan.map((flight) => flight.id),
+  );
 
-  for (const flight of ordered.slice(0, RECENT_PATH_SCAN)) {
+  const recentFlightPaths: DashboardFlightPathDto[] = [];
+  for (const flight of scan) {
     if (recentFlightPaths.length >= limit) break;
-    const detail = await getFlightForUser(userId, flight.id);
-    const coordinates = detail?.combinedPath?.coordinates;
+    const coordinates = pathMap.get(flight.id);
     if (!coordinates || coordinates.length < 2) continue;
     recentFlightPaths.push({
       flightId: flight.id,

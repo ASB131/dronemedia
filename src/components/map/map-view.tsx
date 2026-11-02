@@ -4,7 +4,10 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CircleMarker, LatLngExpression, Map as LeafletMap } from "leaflet";
-import { Film, ImageIcon, X } from "lucide-react";
+import { Film, ImageIcon, MapPin, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import { AltitudeGraph } from "@/components/assets/altitude-graph";
 import {
@@ -43,6 +46,14 @@ import { MapShellSkeleton } from "@/components/ui/skeletons";
 import { cn } from "@/lib/utils";
 
 type AssetTypeFilter = "all" | "photo" | "video";
+
+type SiteNoteDto = {
+  id: string;
+  title: string;
+  note: string | null;
+  lat: number;
+  lng: number;
+};
 
 function thumbnailMarkerHtml(asset: MapAssetDto) {
   return buildThumbnailMarkerHtml(asset, `/api/assets/${asset.id}/thumbnail`);
@@ -118,6 +129,7 @@ export function MapView() {
   const heatLayerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pathsLayerRef = useRef<any>(null);
+  const sitesLayerRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tileLayerRef = useRef<any>(null);
   const onSelectRef = useRef<(asset: MapAssetDto) => void>(() => undefined);
@@ -134,6 +146,10 @@ export function MapView() {
   const basemapTileUrl = basemapUrlForTheme(basemap, mapTheme);
   const [assets, setAssets] = useState<MapAssetDto[]>([]);
   const [flights, setFlights] = useState<MapFlightPathDto[]>([]);
+  const [sites, setSites] = useState<SiteNoteDto[]>([]);
+  const [showSites, setShowSites] = useState(true);
+  const [siteTitleDraft, setSiteTitleDraft] = useState("");
+  const [siteBusy, setSiteBusy] = useState(false);
   const [showPaths, setShowPaths] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [pathRedrawToken, setPathRedrawToken] = useState(0);
@@ -272,9 +288,10 @@ export function MapView() {
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      const [flightsRes, accountRes] = await Promise.all([
+      const [flightsRes, accountRes, sitesRes] = await Promise.all([
         fetch("/api/map/flights"),
         fetch("/api/account"),
+        fetch("/api/sites"),
         fetchAssetsForMap(null, typeFilterRef.current),
       ]);
       if (accountRes.ok) {
@@ -289,6 +306,10 @@ export function MapView() {
           flights: MapFlightPathDto[];
         };
         setFlights(flightsPayload.flights);
+      }
+      if (sitesRes.ok) {
+        const sitesPayload = (await sitesRes.json()) as { sites: SiteNoteDto[] };
+        if (mounted) setSites(sitesPayload.sites);
       }
       // Mount the map container only after the first fetch so we don't flash
       // the empty state (which unmounts mapRef and skips Leaflet init).
@@ -431,6 +452,7 @@ export function MapView() {
         },
       });
       pathsLayerRef.current = L.layerGroup().addTo(map);
+      sitesLayerRef.current = L.layerGroup().addTo(map);
       map.addLayer(clusterRef.current);
 
       map.on("zoomend", () => {
@@ -466,6 +488,7 @@ export function MapView() {
       cursorMarkerRef.current = null;
       clusterRef.current = null;
       pathsLayerRef.current = null;
+      sitesLayerRef.current = null;
       heatLayerRef.current = null;
       mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
@@ -574,6 +597,56 @@ export function MapView() {
       layer.addLayer(line);
     }
   }, [flights, showPaths, assets, mapTheme, pathRedrawToken]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    const layer = sitesLayerRef.current;
+    if (!map || !L || !layer) return;
+    layer.clearLayers();
+    if (!showSites) return;
+    for (const site of sites) {
+      const safeTitle = site.title
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+      const marker = L.marker([site.lat, site.lng], {
+        icon: L.divIcon({
+          html: `<div class="dm-site-marker" title="${safeTitle}"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg></div>`,
+          className: "dm-map-marker-wrap",
+          iconSize: [28, 28],
+          iconAnchor: [14, 28],
+        }),
+      });
+      const note = site.note
+        ? `<p class="text-xs text-muted-foreground mt-1">${site.note.replace(/</g, "&lt;")}</p>`
+        : "";
+      marker.bindPopup(`<strong>${safeTitle}</strong>${note}`);
+      layer.addLayer(marker);
+    }
+  }, [sites, showSites, mapBooted]);
+
+  async function addSiteAtMapCenter() {
+    const map = mapInstanceRef.current;
+    const title = siteTitleDraft.trim();
+    if (!map || !title) return;
+    setSiteBusy(true);
+    const center = map.getCenter();
+    const response = await fetch("/api/sites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        lat: center.lat,
+        lng: center.lng,
+      }),
+    });
+    setSiteBusy(false);
+    if (!response.ok) return;
+    const payload = (await response.json()) as { site: SiteNoteDto };
+    setSites((current) => [payload.site, ...current]);
+    setSiteTitleDraft("");
+  }
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -704,6 +777,34 @@ export function MapView() {
               <span className="text-[10px] opacity-70">zoom {PATH_MIN_ZOOM}+</span>
             </label>
           ) : null}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="size-3.5 accent-primary"
+              checked={showSites}
+              onChange={(event) => setShowSites(event.target.checked)}
+            />
+            <MapPin className="size-3.5" />
+            Sites
+          </label>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Input
+              value={siteTitleDraft}
+              onChange={(event) => setSiteTitleDraft(event.target.value)}
+              placeholder="Site name"
+              className="h-8 w-28 text-xs sm:w-36"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0 text-xs"
+              disabled={siteBusy || !siteTitleDraft.trim()}
+              onClick={() => void addSiteAtMapCenter()}
+            >
+              Pin center
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -752,8 +853,8 @@ export function MapView() {
         ) : empty ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
             <p className="text-sm text-muted-foreground">
-              No geotagged media yet. Upload videos with SRT sidecars or add GPS
-              metadata to see assets on the map.
+              No geotagged media yet. Upload videos with SRT or GPX sidecars, or
+              add GPS metadata to see assets on the map.
             </p>
             <Link href="/photos" className="text-sm text-primary hover:underline">
               Back to photos

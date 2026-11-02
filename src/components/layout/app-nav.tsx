@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Album,
   Archive,
@@ -17,6 +18,7 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { getMediaReturnPath } from "@/lib/navigation/media-return";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -61,6 +63,11 @@ const navSections: NavSection[] = [
 
 export function AppNav({ showAdmin }: { showAdmin: boolean }) {
   const pathname = usePathname();
+  const [mediaReturnPath, setMediaReturnPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMediaReturnPath(getMediaReturnPath());
+  }, [pathname]);
   const sections = showAdmin
     ? [
         ...navSections,
@@ -85,8 +92,13 @@ export function AppNav({ showAdmin }: { showAdmin: boolean }) {
               const active =
                 item.href === "/"
                   ? pathname === "/"
-                  : pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`);
+                  : item.href === "/photos"
+                    ? pathname === "/photos" ||
+                      pathname.startsWith("/photos/") ||
+                      (pathname.startsWith("/assets/") &&
+                        mediaReturnPath === "/photos")
+                    : pathname === item.href ||
+                      pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
 
               return (
