@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 COPY package.json package-lock.json ./
+COPY scripts/copy-cesium-assets.mjs scripts/copy-cesium-assets.mjs
 RUN npm ci
 
 COPY config.yml ./config.yml
