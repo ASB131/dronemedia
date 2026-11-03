@@ -6,7 +6,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS deps
 COPY package.json package-lock.json ./
-COPY scripts/copy-cesium-assets.mjs scripts/copy-cesium-assets.mjs
 RUN npm ci
 
 FROM base AS builder

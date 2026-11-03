@@ -510,7 +510,7 @@ export function AccountSettingsView() {
               <section className="rounded-2xl border border-border bg-card p-4">
                 <p className="text-sm font-semibold">Map appearance</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Basemap for 2D maps and satellite imagery in 3D flight replay
+                  Basemap for maps across the app (Home, Photos, flights, Map)
                 </p>
                 <div className="mt-3">
                   <MapStyleSettings

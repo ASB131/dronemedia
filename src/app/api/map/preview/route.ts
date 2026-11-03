@@ -15,6 +15,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UPSTREAM_HEADERS = {
+  Accept: "image/*,*/*",
+  "User-Agent": "DroneMedia/1.0 (map-style-preview)",
+};
+
 export async function GET(request: Request) {
   try {
     await requireApprovedSession();
@@ -23,7 +28,19 @@ export async function GET(request: Request) {
     const style = mapStyleById(styleId);
 
     if (!style.maptilerId) {
-      return NextResponse.redirect("https://tile.openstreetmap.org/5/15/10.png", 302);
+      const osm = await fetch("https://tile.openstreetmap.org/5/15/10.png", {
+        headers: UPSTREAM_HEADERS,
+      });
+      if (!osm.ok) {
+        return new NextResponse(null, { status: 502 });
+      }
+      const bytes = await osm.arrayBuffer();
+      return new NextResponse(bytes, {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=604800",
+        },
+      });
     }
 
     const config = loadConfig();
@@ -32,13 +49,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "MapTiler not configured" }, { status: 503 });
     }
 
-    const { lng, lat, zoom } = style.previewCenter;
-    const { x, y, z } = lonLatToTileXY(lng, lat, zoom);
+    const { lng, lat } = style.previewCenter;
+    const previewZoom = Math.min(style.previewCenter.zoom, 10);
+    const { x, y, z } = lonLatToTileXY(lng, lat, previewZoom);
     const upstream = upstreamMaptilerTileUrl(style, z, x, y, apiKey);
-    const upstreamRes = await fetch(upstream, { next: { revalidate: 604800 } });
+    const upstreamRes = await fetch(upstream, {
+      headers: UPSTREAM_HEADERS,
+      cache: "force-cache",
+    });
 
     if (!upstreamRes.ok) {
-      return new NextResponse(null, { status: 502 });
+      return new NextResponse(null, { status: upstreamRes.status });
     }
 
     const bytes = await upstreamRes.arrayBuffer();

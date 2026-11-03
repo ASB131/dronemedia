@@ -16,8 +16,6 @@
 # next.js
 /.next/
 /out/
-/public/cesium/
-
 # production
 /build
 

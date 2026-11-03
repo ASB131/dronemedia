@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 import { invalidateBasemapCache } from "@/hooks/use-basemap";
-import { invalidateGlobeConfigCache } from "@/hooks/use-globe-config";
 import { cn } from "@/lib/utils";
 
 type StyleOption = {
@@ -23,6 +22,9 @@ export function MapStyleSettings({
   const [styles, setStyles] = useState<StyleOption[]>([]);
   const [maptilerConfigured, setMaptilerConfigured] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [previewFailed, setPreviewFailed] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +76,6 @@ export function MapStyleSettings({
                 void (async () => {
                   await onSelect(style.id);
                   invalidateBasemapCache();
-                  invalidateGlobeConfigCache();
                   window.dispatchEvent(
                     new CustomEvent("dm-preferences", {
                       detail: { mapStyleId: style.id },
@@ -90,17 +91,28 @@ export function MapStyleSettings({
               )}
             >
               <div className="relative aspect-[12/7] w-full bg-muted">
-                {style.previewUrl ? (
+                {style.previewUrl && !previewFailed[style.id] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={style.previewUrl}
                     alt=""
                     className="size-full object-cover"
                     loading="lazy"
+                    onError={() =>
+                      setPreviewFailed((prev) => ({
+                        ...prev,
+                        [style.id]: true,
+                      }))
+                    }
                   />
                 ) : (
-                  <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
-                    OSM preview
+                  <div className="flex size-full flex-col items-center justify-center gap-1 px-3 text-center text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground/80">
+                      {style.label}
+                    </span>
+                    {style.previewUrl && previewFailed[style.id]
+                      ? "Preview unavailable"
+                      : "OSM preview"}
                   </div>
                 )}
                 {selected ? (

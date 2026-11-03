@@ -210,35 +210,3 @@ export function resolveImageryTemplateForStyle(
     styleId: resolved.styleId,
   };
 }
-
-/** Cesium loads tiles via XHR — use same-origin proxy (see /api/map/tiles). */
-export function resolveGlobeImageryForStyle(
-  config: AppConfig,
-  styleIdInput: string | null | undefined,
-): {
-  imageryUrlTemplate: string;
-  attribution: string;
-  maxZoom: number;
-  styleId: string;
-  useMaptilerProxy: boolean;
-} {
-  const resolved = resolveBasemapForStyle(config, styleIdInput);
-  const apiKey = readMapApiKey(config);
-  if (resolved.provider === "maptiler" && apiKey && resolved.styleId !== "osm") {
-    const style = mapStyleById(resolved.styleId);
-    return {
-      imageryUrlTemplate: `/api/map/tiles/${style.id}/{z}/{x}/{y}.${style.tileFormat}`,
-      attribution: resolved.attribution,
-      maxZoom: 17,
-      styleId: resolved.styleId,
-      useMaptilerProxy: true,
-    };
-  }
-  return {
-    imageryUrlTemplate: resolved.lightUrl,
-    attribution: resolved.attribution,
-    maxZoom: Math.min(resolved.maxZoom, 17),
-    styleId: resolved.styleId,
-    useMaptilerProxy: false,
-  };
-}

@@ -8,10 +8,8 @@ import {
   Combine,
   Download,
   Film,
-  Globe2,
   ImageIcon,
   Images,
-  Map as MapIcon,
   Settings2,
 } from "lucide-react";
 
@@ -31,13 +29,6 @@ const PhotoViewer = dynamic(
 const VideoPlayer = dynamic(
   () =>
     import("@/components/assets/video-player").then((m) => m.VideoPlayer),
-  { ssr: false },
-);
-const FlightPath3DViewer = dynamic(
-  () =>
-    import("@/components/assets/flight-path-3d-viewer").then(
-      (m) => m.FlightPath3DViewer,
-    ),
   { ssr: false },
 );
 import { CombineFlightsModal } from "@/components/flights/combine-flights-modal";
@@ -146,7 +137,6 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [allowInAppSource, setAllowInAppSource] = useState(true);
-  const [flightMapMode, setFlightMapMode] = useState<"2d" | "3d">("2d");
   const playbackPrefs = usePlaybackPreferences();
 
   async function reload() {
@@ -323,40 +313,6 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
 
   const altitudeSeries =
     assetSeries.length > 1 ? assetSeries : (flight?.combinedSeries ?? []);
-
-  const flightSeries3d: TelemetrySeriesPoint[] = useMemo(
-    () =>
-      (flight?.combinedSeries ?? []).map((point) => ({
-        lat: point.lat,
-        lng: point.lng,
-        altitudeMeters: point.altitudeMeters,
-        offsetMs: point.offsetMs,
-        srtTimeMs: point.srtTimeMs,
-        speedMps: point.speedMps,
-      })),
-    [flight?.combinedSeries],
-  );
-
-  const has3dFlightPath = flightSeries3d.length > 1;
-
-  const flightCursorOffsetMs = useMemo(() => {
-    if (!flight || flight.combinedSeries.length === 0) return 0;
-    if (!selectedAssetId || isPhoto) {
-      return flight.combinedSeries[0]?.offsetMs ?? 0;
-    }
-    const t = currentTime * 1000;
-    let bestOffset = flight.combinedSeries[0]!.offsetMs;
-    let bestDist = Infinity;
-    for (const point of flight.combinedSeries) {
-      if (point.assetId !== selectedAssetId) continue;
-      const dist = Math.abs(point.assetOffsetMs - t);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestOffset = point.offsetMs;
-      }
-    }
-    return bestOffset;
-  }, [flight, selectedAssetId, isPhoto, currentTime]);
 
   function onMapPathClick(lat: number, lng: number) {
     if (!flight || flight.combinedSeries.length === 0) return;
@@ -572,54 +528,8 @@ export function FlightDetailView({ flightId }: { flightId: string }) {
         </section>
 
         <section className="flex min-h-[36vh] flex-col lg:min-h-0">
-          {has3dFlightPath ? (
-            <div className="flex items-center justify-end gap-2 border-b border-border bg-card px-3 py-2">
-              <div
-                className="flex rounded-lg border border-border p-0.5"
-                role="group"
-                aria-label="Flight map mode"
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
-                    flightMapMode === "2d"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  aria-pressed={flightMapMode === "2d"}
-                  onClick={() => setFlightMapMode("2d")}
-                >
-                  <MapIcon className="size-3" aria-hidden />
-                  Map
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium",
-                    flightMapMode === "3d"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  aria-pressed={flightMapMode === "3d"}
-                  onClick={() => setFlightMapMode("3d")}
-                >
-                  <Globe2 className="size-3" aria-hidden />
-                  3D
-                </button>
-              </div>
-            </div>
-          ) : null}
           <div className="relative min-h-0 flex-1 bg-muted/30">
-            {flightMapMode === "3d" && has3dFlightPath ? (
-              <FlightPath3DViewer
-                series={flightSeries3d}
-                flightPath={mapPath}
-                currentOffsetMs={flightCursorOffsetMs}
-                homePoint={assetTelemetry?.homePoint ?? null}
-                className="absolute inset-0 size-full"
-              />
-            ) : pathSegments.length > 0 ||
+            {pathSegments.length > 0 ||
               mapPath ||
               locationMarkers.length > 0 ||
               mapPosition ? (
