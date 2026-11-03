@@ -1,7 +1,8 @@
 import type { AppConfig } from "@/lib/config/schema";
 
 import { readMapApiKey } from "@/lib/map/basemap";
-import { resolveImageryTemplateForStyle } from "@/lib/map/map-styles";
+import { resolveGlobeImageryForStyle } from "@/lib/map/map-styles";
+import { proxiedTerrainBaseUrl } from "@/lib/map/maptiler-proxy";
 
 export type GlobeTerrainMode = "cesium-ion" | "maptiler" | "ellipsoid";
 
@@ -29,7 +30,7 @@ export function resolveGlobeConfig(
   config: AppConfig,
   mapStyleId: string | null | undefined,
 ): GlobeConfigResolved {
-  const imagery = resolveImageryTemplateForStyle(config, mapStyleId);
+  const imagery = resolveGlobeImageryForStyle(config, mapStyleId);
   const ionToken = readCesiumIonToken();
   if (ionToken) {
     return {
@@ -49,11 +50,10 @@ export function resolveGlobeConfig(
   const apiKey = readMapApiKey(config);
 
   if (provider === "maptiler" && apiKey) {
-    const key = encodeURIComponent(apiKey);
     return {
       terrainMode: "maptiler",
       cesiumIonAccessToken: null,
-      mapTilerTerrainUrl: `https://api.maptiler.com/tiles/terrain-quantized-mesh-v2/?key=${key}`,
+      mapTilerTerrainUrl: `${proxiedTerrainBaseUrl()}/`,
       imageryUrlTemplate: imagery.imageryUrlTemplate,
       imageryMaxZoom: imagery.maxZoom,
       attribution: imagery.attribution,

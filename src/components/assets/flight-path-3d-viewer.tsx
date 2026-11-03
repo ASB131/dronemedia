@@ -61,6 +61,10 @@ export function FlightPath3DViewer({
 
         if (disposed || !containerRef.current) return;
 
+        if (Cesium.RequestScheduler) {
+          Cesium.RequestScheduler.maximumRequestsPerServer = 6;
+        }
+
         if (globeConfig.cesiumIonAccessToken) {
           Cesium.Ion.defaultAccessToken = globeConfig.cesiumIonAccessToken;
         }
@@ -85,7 +89,7 @@ export function FlightPath3DViewer({
           const imagery = new Cesium.UrlTemplateImageryProvider({
             url: globeConfig.imageryUrlTemplate,
             minimumLevel: 0,
-            maximumLevel: globeConfig.imageryMaxZoom ?? 22,
+            maximumLevel: globeConfig.imageryMaxZoom ?? 17,
             credit: globeConfig.attribution,
           });
           imageryLayers.push(new Cesium.ImageryLayer(imagery));
@@ -113,8 +117,8 @@ export function FlightPath3DViewer({
         });
 
         viewer.scene.globe.depthTestAgainstTerrain = true;
-        viewer.scene.globe.maximumScreenSpaceError = 1.25;
-        viewer.scene.globe.tileCacheSize = 1200;
+        viewer.scene.globe.maximumScreenSpaceError = 2;
+        viewer.scene.globe.tileCacheSize = 800;
 
         const controller = viewer.scene.screenSpaceCameraController;
         controller.minimumZoomDistance = 35;

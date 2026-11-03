@@ -121,23 +121,17 @@ function maptilerTileUrl(
 }
 
 export function mapStylePreviewUrl(
-  config: AppConfig,
+  _config: AppConfig,
   styleId: string,
-  size = "240x140",
+  _size = "240x140",
 ): string | null {
   const style = mapStyleById(normalizeMapStyleId(styleId));
-  const apiKey = readMapApiKey(config);
-  const { lng, lat, zoom } = style.previewCenter;
-
   if (style.id === "osm") {
     return null;
   }
-
-  if (style.maptilerId && apiKey) {
-    const key = encodeURIComponent(apiKey);
-    return `https://api.maptiler.com/maps/${style.maptilerId}/static/${lng},${lat},${zoom}/${size}.${style.tileFormat}?key=${key}`;
+  if (style.maptilerId) {
+    return `/api/map/preview?styleId=${encodeURIComponent(style.id)}`;
   }
-
   return null;
 }
 
@@ -209,11 +203,42 @@ export function resolveImageryTemplateForStyle(
   styleId: string;
 } {
   const resolved = resolveBasemapForStyle(config, styleIdInput);
-  const url = resolved.lightUrl;
   return {
-    imageryUrlTemplate: url,
+    imageryUrlTemplate: resolved.lightUrl,
     attribution: resolved.attribution,
     maxZoom: resolved.maxZoom,
     styleId: resolved.styleId,
+  };
+}
+
+/** Cesium loads tiles via XHR — use same-origin proxy (see /api/map/tiles). */
+export function resolveGlobeImageryForStyle(
+  config: AppConfig,
+  styleIdInput: string | null | undefined,
+): {
+  imageryUrlTemplate: string;
+  attribution: string;
+  maxZoom: number;
+  styleId: string;
+  useMaptilerProxy: boolean;
+} {
+  const resolved = resolveBasemapForStyle(config, styleIdInput);
+  const apiKey = readMapApiKey(config);
+  if (resolved.provider === "maptiler" && apiKey && resolved.styleId !== "osm") {
+    const style = mapStyleById(resolved.styleId);
+    return {
+      imageryUrlTemplate: `/api/map/tiles/${style.id}/{z}/{x}/{y}.${style.tileFormat}`,
+      attribution: resolved.attribution,
+      maxZoom: 17,
+      styleId: resolved.styleId,
+      useMaptilerProxy: true,
+    };
+  }
+  return {
+    imageryUrlTemplate: resolved.lightUrl,
+    attribution: resolved.attribution,
+    maxZoom: Math.min(resolved.maxZoom, 17),
+    styleId: resolved.styleId,
+    useMaptilerProxy: false,
   };
 }
