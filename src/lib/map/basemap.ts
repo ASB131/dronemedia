@@ -21,7 +21,7 @@ const CARTO_ATTRIBUTION =
 const MAPTILER_ATTRIBUTION =
   '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-function osmBasemap(): BasemapResolved {
+export function osmBasemap(): BasemapResolved {
   const url = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
   return {
     provider: "osm",
@@ -33,7 +33,7 @@ function osmBasemap(): BasemapResolved {
   };
 }
 
-function readMapApiKey(config: AppConfig): string {
+export function readMapApiKey(config: AppConfig): string {
   const fromConfig = config.map?.apiKey?.trim() ?? "";
   const fromEnv = process.env.MAP_API_KEY?.trim() ?? "";
   return fromConfig || fromEnv;

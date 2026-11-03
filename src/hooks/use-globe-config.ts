@@ -9,8 +9,10 @@ export type GlobeConfigClient = {
   cesiumIonAccessToken: string | null;
   mapTilerTerrainUrl: string | null;
   imageryUrlTemplate: string;
+  imageryMaxZoom: number;
   attribution: string;
   usingFallbackTerrain: boolean;
+  mapStyleId: string;
   loading: boolean;
   error: string | null;
 };
@@ -22,9 +24,15 @@ const DEFAULT: GlobeConfigClient = {
   imageryUrlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution: "",
   usingFallbackTerrain: true,
+  imageryMaxZoom: 19,
+  mapStyleId: "hybrid",
   loading: true,
   error: null,
 };
+
+export function invalidateGlobeConfigCache() {
+  /* globe hook refetches on dm-preferences; no module cache yet */
+}
 
 export function useGlobeConfig(): GlobeConfigClient {
   const [state, setState] = useState<GlobeConfigClient>(DEFAULT);
@@ -61,8 +69,13 @@ export function useGlobeConfig(): GlobeConfigClient {
     }
 
     void load();
+    function onPrefs() {
+      void load();
+    }
+    window.addEventListener("dm-preferences", onPrefs);
     return () => {
       cancelled = true;
+      window.removeEventListener("dm-preferences", onPrefs);
     };
   }, []);
 

@@ -76,6 +76,40 @@ export function seriesToDegreesHeights(
   return out;
 }
 
+/** Insert points between samples so 3D paths look smooth. */
+export function densifySeries(
+  series: TelemetrySeriesPoint[],
+  stepMs = 120,
+): TelemetrySeriesPoint[] {
+  if (series.length < 2) return series;
+  const out: TelemetrySeriesPoint[] = [];
+  for (let i = 0; i < series.length - 1; i++) {
+    const a = series[i]!;
+    const b = series[i + 1]!;
+    out.push(a);
+    const span = b.offsetMs - a.offsetMs;
+    if (span <= stepMs) continue;
+    const steps = Math.min(Math.floor(span / stepMs), 48);
+    for (let s = 1; s < steps; s++) {
+      const u = s / steps;
+      out.push({
+        lat: a.lat + (b.lat - a.lat) * u,
+        lng: a.lng + (b.lng - a.lng) * u,
+        altitudeMeters:
+          a.altitudeMeters + (b.altitudeMeters - a.altitudeMeters) * u,
+        offsetMs: a.offsetMs + span * u,
+        srtTimeMs: a.srtTimeMs + (b.srtTimeMs - a.srtTimeMs) * u,
+        speedMps:
+          a.speedMps != null && b.speedMps != null
+            ? a.speedMps + (b.speedMps - a.speedMps) * u
+            : a.speedMps ?? b.speedMps,
+      });
+    }
+  }
+  out.push(series[series.length - 1]!);
+  return out;
+}
+
 export function headingFromSeries(
   series: TelemetrySeriesPoint[],
   offsetMs: number,

@@ -7,6 +7,7 @@ import { findUserById } from "@/lib/auth/users";
 import { loadConfig } from "@/lib/config";
 import { getWebDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { normalizeMapStyleId } from "@/lib/map/map-styles";
 import {
   coercePlaybackResolution,
   normalizeHlsPreviewHeights,
@@ -30,6 +31,7 @@ const bodySchema = z.object({
   cinematicSource: z.enum(["all", "favorites", "albums"]).optional(),
   cinematicAlbumIds: z.array(z.string().uuid()).max(50).optional(),
   cinematicLutId: z.string().uuid().nullable().optional(),
+  mapStyleId: z.string().min(1).max(64).optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -120,6 +122,9 @@ export async function PATCH(request: Request) {
         : {}),
       ...(body.cinematicLutId !== undefined
         ? { cinematicLutId: body.cinematicLutId }
+        : {}),
+      ...(body.mapStyleId !== undefined
+        ? { mapStyleId: normalizeMapStyleId(body.mapStyleId) }
         : {}),
     };
 

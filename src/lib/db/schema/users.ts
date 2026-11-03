@@ -59,6 +59,8 @@ export const users = pgTable(
          * Admins always retain Source regardless of this flag.
          */
         allowInAppSource?: boolean | null;
+        /** User-selected MapTiler / OSM basemap for 2D maps and 3D globe imagery. */
+        mapStyleId?: string;
         cinematicSource?: "all" | "favorites" | "albums";
         cinematicAlbumIds?: string[];
         cinematicLutId?: string | null;

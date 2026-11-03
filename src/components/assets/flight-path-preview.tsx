@@ -230,7 +230,7 @@ export function FlightPathPreview({
 
       tileLayerRef.current = L.tileLayer(basemapUrlForTheme(basemap, theme), {
         attribution: basemap.attribution,
-        maxZoom: 20,
+        maxZoom: basemap.maxZoom ?? 20,
       }).addTo(map);
 
       pathsLayerRef.current = L.layerGroup().addTo(map);
@@ -284,7 +284,7 @@ export function FlightPathPreview({
     }
     tileLayerRef.current = L.tileLayer(basemapUrlForTheme(basemap, theme), {
       attribution: basemap.attribution,
-      maxZoom: 20,
+      maxZoom: basemap.maxZoom ?? 20,
     }).addTo(map);
   }, [theme, mapReady, basemap]);
 

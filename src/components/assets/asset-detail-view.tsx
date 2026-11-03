@@ -21,6 +21,7 @@ import {
 
 import { AddToFlightModal } from "@/components/assets/add-to-flight-modal";
 import { AssetDownloadButton } from "@/components/assets/asset-download-button";
+import { DraggableMediaPip } from "@/components/assets/draggable-media-pip";
 import { FlightPathPreview } from "@/components/assets/flight-path-preview";
 import { AltitudeGraph } from "@/components/assets/altitude-graph";
 import { MissingTelemetryCallout } from "@/components/assets/missing-telemetry-callout";
@@ -812,6 +813,46 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
             {asset.capturedLabel}
           </p>
         </div>
+        {has3dFlightPath ? (
+          <div
+            className="flex items-center rounded-lg border border-border p-0.5"
+            role="group"
+            aria-label="Map view mode"
+          >
+            <button
+              type="button"
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                locationViewMode === "2d"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-pressed={locationViewMode === "2d"}
+              onClick={() => {
+                setLocationViewMode("2d");
+                sessionStorage.setItem(ASSET_MAP_MODE_KEY, "2d");
+              }}
+            >
+              <Map className="size-3.5" aria-hidden />
+              Video
+            </button>
+            <button
+              type="button"
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                locationViewMode === "3d"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-pressed={locationViewMode === "3d"}
+              onClick={() => {
+                setLocationViewMode("3d");
+                sessionStorage.setItem(ASSET_MAP_MODE_KEY, "3d");
+              }}
+            >
+              <Globe2 className="size-3.5" aria-hidden />
+              3D
+            </button>
+          </div>
+        ) : null}
         <AssetDownloadButton
           assetId={assetId}
           assetType={asset.assetType}
@@ -909,46 +950,6 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
               <p className="text-sm text-white/80">Loading…</p>
             </div>
           ) : null}
-          {has3dFlightPath ? (
-            <div
-              className="absolute left-3 top-3 z-30 flex rounded-lg border border-white/20 bg-black/60 p-0.5 shadow-lg backdrop-blur-sm"
-              role="group"
-              aria-label="Map view mode"
-            >
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  locationViewMode === "2d"
-                    ? "bg-white text-black"
-                    : "text-white/80 hover:text-white"
-                }`}
-                aria-pressed={locationViewMode === "2d"}
-                onClick={() => {
-                  setLocationViewMode("2d");
-                  sessionStorage.setItem(ASSET_MAP_MODE_KEY, "2d");
-                }}
-              >
-                <Map className="size-3.5" aria-hidden />
-                Video
-              </button>
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  locationViewMode === "3d"
-                    ? "bg-white text-black"
-                    : "text-white/80 hover:text-white"
-                }`}
-                aria-pressed={locationViewMode === "3d"}
-                onClick={() => {
-                  setLocationViewMode("3d");
-                  sessionStorage.setItem(ASSET_MAP_MODE_KEY, "3d");
-                }}
-              >
-                <Globe2 className="size-3.5" aria-hidden />
-                3D flight
-              </button>
-            </div>
-          ) : null}
           {focus3dGlobe ? (
             <>
               <FlightPath3DViewer
@@ -959,11 +960,10 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                 className="absolute inset-0 size-full"
                 hideTerrainHint
               />
-              <div className="absolute bottom-3 right-3 z-30 flex w-[min(420px,calc(100%-1.5rem))] flex-col overflow-hidden rounded-xl border border-white/15 bg-black/90 shadow-2xl ring-1 ring-white/10">
-                <p className="shrink-0 border-b border-white/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-white/60">
-                  Media
-                </p>
-                <div className="relative aspect-video w-full bg-black">
+              <DraggableMediaPip
+                storageKey={`dm-pip-${assetId}`}
+                className="bottom-auto right-auto"
+              >
                   {viewerMode === "photo" && asset.assetType === "photo" ? (
                     <PhotoViewer
                       key={`${asset.id}-photo-pip`}
@@ -1046,12 +1046,11 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
                       className="absolute inset-0 size-full object-contain"
                     />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-white/60">
+                    <div className="flex h-full items-center justify-center px-3 text-center text-xs text-white/60">
                       Preparing playback…
                     </div>
                   )}
-                </div>
-              </div>
+              </DraggableMediaPip>
             </>
           ) : viewerMode === "photo" && asset.assetType === "photo" ? (
             <PhotoViewer

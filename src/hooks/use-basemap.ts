@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import { basemapUrlForTheme, type BasemapResolved } from "@/lib/map/basemap";
 import type { MapTheme } from "@/lib/map/tiles";
 
-export type BasemapClientConfig = BasemapResolved;
+export type BasemapClientConfig = BasemapResolved & {
+  styleId?: string;
+  maxZoom?: number;
+};
 
 const OSM_FALLBACK: BasemapClientConfig = {
   provider: "osm",
@@ -15,6 +18,8 @@ const OSM_FALLBACK: BasemapClientConfig = {
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   usingFallback: true,
   apiKeyConfigured: false,
+  styleId: "osm",
+  maxZoom: 19,
 };
 
 let cached: BasemapClientConfig | null = null;
@@ -52,6 +57,12 @@ export function useBasemap(): BasemapClientConfig {
 
   useEffect(() => {
     void fetchBasemap().then(setConfig);
+    function onPrefs() {
+      invalidateBasemapCache();
+      void fetchBasemap().then(setConfig);
+    }
+    window.addEventListener("dm-preferences", onPrefs);
+    return () => window.removeEventListener("dm-preferences", onPrefs);
   }, []);
 
   return config;

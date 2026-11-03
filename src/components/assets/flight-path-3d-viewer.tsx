@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useGlobeConfig } from "@/hooks/use-globe-config";
 import type { LineStringGeoJson } from "@/lib/assets/telemetry";
 import type { TelemetrySeriesPoint } from "@/lib/assets/telemetry";
 import { loadCesium, type CesiumNamespace } from "@/lib/map/cesium-loader";
 import {
+  densifySeries,
   headingFromSeries,
   interpolateSeriesAtOffsetMs,
   seriesToDegreesHeights,
@@ -19,7 +20,6 @@ type Props = {
   currentOffsetMs: number;
   homePoint?: { lat: number; lng: number } | null;
   className?: string;
-  /** Hide MapTiler flat-terrain hint (e.g. when overlaid on dark stage). */
   hideTerrainHint?: boolean;
 };
 
@@ -37,18 +37,22 @@ export function FlightPath3DViewer({
     null,
   );
   const cesiumRef = useRef<CesiumNamespace | null>(null);
-  const initializedRef = useRef(false);
   const globeConfig = useGlobeConfig();
   const [initError, setInitError] = useState<string | null>(null);
   const [viewerReady, setViewerReady] = useState(false);
 
+  const renderSeries = useMemo(
+    () => densifySeries(series, 100),
+    [series],
+  );
+
   useEffect(() => {
-    if (globeConfig.loading || !containerRef.current || initializedRef.current) {
+    if (globeConfig.loading || !containerRef.current) {
       return;
     }
 
     let disposed = false;
-    initializedRef.current = true;
+    setViewerReady(false);
 
     async function initViewer() {
       try {
@@ -81,7 +85,7 @@ export function FlightPath3DViewer({
           const imagery = new Cesium.UrlTemplateImageryProvider({
             url: globeConfig.imageryUrlTemplate,
             minimumLevel: 0,
-            maximumLevel: 19,
+            maximumLevel: globeConfig.imageryMaxZoom ?? 22,
             credit: globeConfig.attribution,
           });
           imageryLayers.push(new Cesium.ImageryLayer(imagery));
@@ -105,27 +109,41 @@ export function FlightPath3DViewer({
               ? undefined
               : imageryLayers[0],
           requestRenderMode: true,
-          maximumRenderTimeChange: Infinity,
+          maximumRenderTimeChange: 0.5,
         });
 
         viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.scene.globe.maximumScreenSpaceError = 1.25;
+        viewer.scene.globe.tileCacheSize = 1200;
+
+        const controller = viewer.scene.screenSpaceCameraController;
+        controller.minimumZoomDistance = 35;
+        controller.maximumZoomDistance = 80_000;
+
         viewer.cesiumWidget.creditContainer.classList.add("text-[10px]");
 
         const heights =
-          series.length > 0
-            ? seriesToDegreesHeights(series)
+          renderSeries.length > 0
+            ? seriesToDegreesHeights(renderSeries)
             : (flightPath?.coordinates.flatMap(([lng, lat]) => [lng, lat, 0]) ??
               []);
 
         if (heights.length >= 6) {
           viewer.entities.add({
+            name: "Flight path outline",
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArrayHeights(heights),
+              width: 8,
+              material: Cesium.Color.fromCssColorString("#0f172a").withAlpha(0.55),
+              clampToGround: false,
+            },
+          });
+          viewer.entities.add({
             name: "Flight path",
             polyline: {
               positions: Cesium.Cartesian3.fromDegreesArrayHeights(heights),
-              width: 4,
-              material: Cesium.Color.fromCssColorString("#4250AF").withAlpha(
-                0.95,
-              ),
+              width: 5,
+              material: Cesium.Color.fromCssColorString("#60a5fa").withAlpha(0.98),
               clampToGround: false,
             },
           });
@@ -160,16 +178,28 @@ export function FlightPath3DViewer({
           });
         }
 
-        droneEntityRef.current = viewer.entities.add({
+        const drone = viewer.entities.add({
           name: "Drone",
           position: Cesium.Cartesian3.fromDegrees(0, 0, 0),
           point: {
-            pixelSize: 14,
+            pixelSize: 16,
             color: Cesium.Color.fromCssColorString("#f97316"),
             outlineColor: Cesium.Color.WHITE,
             outlineWidth: 2,
           },
         });
+        droneEntityRef.current = drone;
+
+        viewer.trackedEntity = drone;
+        (
+          viewer as unknown as {
+            trackedEntityOffset: InstanceType<CesiumNamespace["HeadingPitchRange"]>;
+          }
+        ).trackedEntityOffset = new Cesium.HeadingPitchRange(
+          0,
+          Cesium.Math.toRadians(-38),
+          520,
+        );
 
         if (heights.length >= 6) {
           const positions = Cesium.Cartesian3.fromDegreesArrayHeights(heights);
@@ -178,8 +208,8 @@ export function FlightPath3DViewer({
             duration: 0,
             offset: new Cesium.HeadingPitchRange(
               0,
-              Cesium.Math.toRadians(-35),
-              Math.max(sphere.radius * 2.5, 120),
+              Cesium.Math.toRadians(-38),
+              Math.max(sphere.radius * 2.2, 180),
             ),
           });
         }
@@ -190,7 +220,6 @@ export function FlightPath3DViewer({
           setInitError(null);
         }
       } catch (error) {
-        initializedRef.current = false;
         if (!disposed) {
           setInitError(
             error instanceof Error ? error.message : "3D viewer failed to load",
@@ -207,11 +236,19 @@ export function FlightPath3DViewer({
       viewerRef.current = null;
       droneEntityRef.current = null;
       cesiumRef.current = null;
-      initializedRef.current = false;
       setViewerReady(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- init once when globe config arrives
-  }, [globeConfig.loading, globeConfig.terrainMode]);
+  }, [
+    globeConfig.loading,
+    globeConfig.terrainMode,
+    globeConfig.mapStyleId,
+    globeConfig.imageryUrlTemplate,
+    globeConfig.mapTilerTerrainUrl,
+    globeConfig.cesiumIonAccessToken,
+    renderSeries,
+    flightPath,
+    homePoint,
+  ]);
 
   useEffect(() => {
     const viewer = viewerRef.current;

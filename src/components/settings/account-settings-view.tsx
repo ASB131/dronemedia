@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PreviewLutPicker } from "@/components/assets/preview-lut-picker";
 import { PortfolioSettingsPanel } from "@/components/settings/portfolio-settings-panel";
+import { MapStyleSettings } from "@/components/settings/map-style-settings";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -62,6 +63,7 @@ type AccountPayload = {
     defaultDLogLutId: string | null;
     defaultDLogMLutId: string | null;
     allowInAppSource?: boolean | null;
+    mapStyleId?: string;
   };
 };
 
@@ -502,6 +504,23 @@ export function AccountSettingsView() {
                       {label}
                     </button>
                   ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-sm font-semibold">Map appearance</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Basemap for 2D maps and satellite imagery in 3D flight replay
+                </p>
+                <div className="mt-3">
+                  <MapStyleSettings
+                    selectedStyleId={
+                      account.preferences.mapStyleId ?? "hybrid"
+                    }
+                    onSelect={(mapStyleId) =>
+                      savePreferences({ mapStyleId })
+                    }
+                  />
                 </div>
               </section>
 

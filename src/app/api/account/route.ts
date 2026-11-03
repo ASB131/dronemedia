@@ -82,6 +82,7 @@ export async function GET() {
       cinematicSource: user.preferences?.cinematicSource ?? "all",
       cinematicAlbumIds: user.preferences?.cinematicAlbumIds ?? [],
       cinematicLutId: user.preferences?.cinematicLutId ?? null,
+      mapStyleId: user.preferences?.mapStyleId ?? "hybrid",
     };
 
     return NextResponse.json({

@@ -1,24 +1,20 @@
 import type { AppConfig } from "@/lib/config/schema";
 
+import { readMapApiKey } from "@/lib/map/basemap";
+import { resolveImageryTemplateForStyle } from "@/lib/map/map-styles";
+
 export type GlobeTerrainMode = "cesium-ion" | "maptiler" | "ellipsoid";
 
 export type GlobeConfigResolved = {
   terrainMode: GlobeTerrainMode;
-  /** Set on client when using Cesium ion world terrain / imagery. */
   cesiumIonAccessToken: string | null;
-  /** MapTiler quantized mesh endpoint (includes key query param). */
   mapTilerTerrainUrl: string | null;
-  /** Raster basemap for the globe (includes key when required). */
   imageryUrlTemplate: string;
+  imageryMaxZoom: number;
   attribution: string;
   usingFallbackTerrain: boolean;
+  mapStyleId: string;
 };
-
-function readMapApiKey(config: AppConfig): string {
-  const fromConfig = config.map?.apiKey?.trim() ?? "";
-  const fromEnv = process.env.MAP_API_KEY?.trim() ?? "";
-  return fromConfig || fromEnv;
-}
 
 function readCesiumIonToken(): string {
   return (
@@ -28,17 +24,12 @@ function readCesiumIonToken(): string {
   );
 }
 
-const OSM_IMAGERY =
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-const MAPTILER_ATTRIBUTION =
-  '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-/** Resolve 3D globe terrain + imagery from operator config (server-side). */
-export function resolveGlobeConfig(config: AppConfig): GlobeConfigResolved {
+/** Resolve 3D globe terrain + imagery (server-side). */
+export function resolveGlobeConfig(
+  config: AppConfig,
+  mapStyleId: string | null | undefined,
+): GlobeConfigResolved {
+  const imagery = resolveImageryTemplateForStyle(config, mapStyleId);
   const ionToken = readCesiumIonToken();
   if (ionToken) {
     return {
@@ -46,9 +37,11 @@ export function resolveGlobeConfig(config: AppConfig): GlobeConfigResolved {
       cesiumIonAccessToken: ionToken,
       mapTilerTerrainUrl: null,
       imageryUrlTemplate: "",
+      imageryMaxZoom: 22,
       attribution:
         '&copy; <a href="https://cesium.com/">Cesium</a> &copy; OpenStreetMap contributors',
       usingFallbackTerrain: false,
+      mapStyleId: imagery.styleId,
     };
   }
 
@@ -61,9 +54,11 @@ export function resolveGlobeConfig(config: AppConfig): GlobeConfigResolved {
       terrainMode: "maptiler",
       cesiumIonAccessToken: null,
       mapTilerTerrainUrl: `https://api.maptiler.com/tiles/terrain-quantized-mesh-v2/?key=${key}`,
-      imageryUrlTemplate: `https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.jpg?key=${key}`,
-      attribution: MAPTILER_ATTRIBUTION,
+      imageryUrlTemplate: imagery.imageryUrlTemplate,
+      imageryMaxZoom: imagery.maxZoom,
+      attribution: imagery.attribution,
       usingFallbackTerrain: false,
+      mapStyleId: imagery.styleId,
     };
   }
 
@@ -71,8 +66,10 @@ export function resolveGlobeConfig(config: AppConfig): GlobeConfigResolved {
     terrainMode: "ellipsoid",
     cesiumIonAccessToken: null,
     mapTilerTerrainUrl: null,
-    imageryUrlTemplate: OSM_IMAGERY,
-    attribution: OSM_ATTRIBUTION,
+    imageryUrlTemplate: imagery.imageryUrlTemplate,
+    imageryMaxZoom: imagery.maxZoom,
+    attribution: imagery.attribution,
     usingFallbackTerrain: true,
+    mapStyleId: imagery.styleId,
   };
 }
