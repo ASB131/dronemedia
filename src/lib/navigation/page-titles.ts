@@ -5,6 +5,7 @@ const TITLES: Record<string, string> = {
   "/favorites": "Favourites",
   "/albums": "Albums",
   "/flights": "Flights",
+  "/trips": "Trips",
   "/community": "Community",
   "/bin": "Bin",
   "/drones": "Drones",
@@ -20,6 +21,7 @@ export function pageTitleForPath(pathname: string): string | null {
   if (TITLES[pathname]) return TITLES[pathname];
   if (pathname.startsWith("/assets/")) return "Asset";
   if (pathname.startsWith("/flights/")) return "Flight";
+  if (pathname.startsWith("/trips/")) return "Trip";
   if (pathname.startsWith("/albums/")) return "Album";
   if (pathname.startsWith("/u/")) return "Profile";
   return null;

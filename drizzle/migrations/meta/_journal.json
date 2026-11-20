@@ -120,6 +120,13 @@
       "when": 1786800000000,
       "tag": "0016_asset_files_hash_nonunique",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786900000000,
+      "tag": "0017_trips",
+      "breakpoints": true
     }
   ]
 }

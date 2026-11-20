@@ -280,6 +280,9 @@ export async function getTimelineForUser(
     mediaType?: TimelineMediaTypeFilter;
     cursor?: TimelineCursor;
     limit?: number;
+    /** Inclusive UTC calendar dates (YYYY-MM-DD). */
+    captureDateFrom?: string;
+    captureDateTo?: string;
   },
 ): Promise<TimelineResponse> {
   const db = getWebDb();
@@ -296,6 +299,16 @@ export async function getTimelineForUser(
   }
   const typeCondition = mediaTypeCondition(mediaType);
   if (typeCondition) conditions.push(typeCondition);
+  if (options?.captureDateFrom) {
+    conditions.push(
+      sql`(${displayCapturedAt})::date >= ${options.captureDateFrom}::date`,
+    );
+  }
+  if (options?.captureDateTo) {
+    conditions.push(
+      sql`(${displayCapturedAt})::date <= ${options.captureDateTo}::date`,
+    );
+  }
   if (options?.cursor) {
     conditions.push(sql`
       (${displayCapturedAt} < ${options.cursor.capturedAt}
@@ -315,7 +328,9 @@ export async function getTimelineForUser(
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
   const onThisDay =
-    !options?.cursor
+    !options?.cursor &&
+    !options?.captureDateFrom &&
+    !options?.captureDateTo
       ? await listOnThisDayGroups(
           userId,
           Boolean(options?.favoritesOnly),

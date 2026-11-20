@@ -353,8 +353,11 @@ function mergeTimelineSections(
 
 export function TimelineView({
   favoritesOnly = false,
+  tripId,
 }: {
   favoritesOnly?: boolean;
+  /** When set, loads media for this trip date range only. */
+  tripId?: string;
 }) {
   const [data, setData] = useState<TimelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -409,13 +412,15 @@ export function TimelineView({
     if (favoritesOnly) searchParams.set("favorite", "true");
     if (mediaType !== "all") searchParams.set("type", mediaType);
     if (cursor) searchParams.set("cursor", cursor);
-    const url = `/api/assets/timeline?${searchParams}`;
+    const url = tripId
+      ? `/api/trips/${tripId}/timeline?${searchParams}`
+      : `/api/assets/timeline?${searchParams}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error("Failed to load timeline");
     }
     return (await response.json()) as TimelineResponse;
-  }, [favoritesOnly, mediaType]);
+  }, [favoritesOnly, mediaType, tripId]);
 
   const reload = useCallback(async () => {
     try {

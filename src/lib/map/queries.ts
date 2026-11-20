@@ -35,6 +35,8 @@ export async function listMapAssetsForUser(
     east?: number;
     west?: number;
     limit?: number;
+    captureDateFrom?: string;
+    captureDateTo?: string;
   },
 ): Promise<MapAssetDto[]> {
   const db = getWebDb();
@@ -45,6 +47,17 @@ export async function listMapAssetsForUser(
   ];
   if (options?.assetType) {
     conditions.push(eq(assets.assetType, options.assetType));
+  }
+  const displayCapturedAt = sql`date_trunc('milliseconds', coalesce(${assets.capturedAtOverride}, ${assets.capturedAtOriginal}, ${assets.createdAt}))`;
+  if (options?.captureDateFrom) {
+    conditions.push(
+      sql`(${displayCapturedAt})::date >= ${options.captureDateFrom}::date`,
+    );
+  }
+  if (options?.captureDateTo) {
+    conditions.push(
+      sql`(${displayCapturedAt})::date <= ${options.captureDateTo}::date`,
+    );
   }
   if (
     options?.north != null &&

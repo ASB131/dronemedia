@@ -75,7 +75,7 @@ Live job status after import: checksum, thumbnails, metadata, flight path, and t
 
 ## Features
 
-- **Library**: home dashboard, photos grid (`/photos`), map (with site pins), flights, albums, drones, favorites, bin
+- **Library**: home dashboard, photos grid (`/photos`), map (with site pins), flights, **trips** (date-range media groups), albums, drones, favorites, bin
 - **Upload**: chunked uploads with basename grouping (MP4 + SRT or GPX + LRF) and a progress dock
 - **Playback**: HLS from cache; Source plays the original when allowed
 - **Photos**: Web preview from cache; download uses full originals
