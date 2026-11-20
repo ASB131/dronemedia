@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarRange, Luggage, Trash2 } from "lucide-react";
+import { CalendarRange, Luggage, Settings2, Trash2 } from "lucide-react";
 
+import { TripSettingsDialog } from "@/components/trips/trip-settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MediaGridSkeleton } from "@/components/ui/skeletons";
@@ -31,6 +32,7 @@ export function TripsList() {
   const [endDate, setEndDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [settingsTrip, setSettingsTrip] = useState<TripSummaryDto | null>(null);
 
   async function reload() {
     const response = await fetch("/api/trips");
@@ -88,7 +90,9 @@ export function TripsList() {
     window.location.href = `/trips/${payload.id}`;
   }
 
-  async function deleteTrip(trip: TripSummaryDto) {
+  async function deleteTrip(trip: TripSummaryDto, event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
     if (
       !confirm(
         `Delete trip “${trip.name}”? Your media stays in the library — only this grouping is removed.`,
@@ -108,16 +112,20 @@ export function TripsList() {
     await reload();
   }
 
+  function openSettings(trip: TripSummaryDto, event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSettingsTrip(trip);
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Trips</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading
-              ? "Loading…"
-              : `${trips.length} trip${trips.length === 1 ? "" : "s"} — group media by travel dates`}
-          </p>
+          {loading ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">Loading…</p>
+          ) : null}
         </div>
         <Button
           size="sm"
@@ -179,69 +187,72 @@ export function TripsList() {
         ) : null}
 
         {loading ? (
-          <MediaGridSkeleton count={6} />
+          <MediaGridSkeleton count={8} />
         ) : trips.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-6 py-12 text-center text-sm text-muted-foreground">
             No trips yet. Create one to gather photos and videos from a date
             range.
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {byYear.map(([year, items]) => (
               <section key={year}>
-                <h2 className="mb-3 text-lg font-semibold">{year}</h2>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <h2 className="mb-2 text-base font-semibold">{year}</h2>
+                <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                   {items.map((trip) => (
                     <article
                       key={trip.id}
-                      className="group relative overflow-hidden rounded-xl border border-border bg-card"
+                      className="group relative overflow-hidden rounded-lg border border-border bg-card"
                     >
-                      <Link
-                        href={`/trips/${trip.id}`}
-                        className="block"
-                      >
-                        <div className="aspect-[16/10] bg-muted">
-                          {trip.coverAssetId ? (
+                      <Link href={`/trips/${trip.id}`} className="block">
+                        <div className="aspect-[4/3] bg-muted">
+                          {trip.coverThumbnailUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={`/api/assets/${trip.coverAssetId}/thumbnail`}
+                              src={trip.coverThumbnailUrl}
                               alt=""
                               className="size-full object-cover"
                             />
                           ) : (
                             <div className="flex size-full items-center justify-center text-muted-foreground">
-                              <CalendarRange className="size-10 opacity-40" />
+                              <CalendarRange className="size-6 opacity-40" />
                             </div>
                           )}
                         </div>
-                        <div className="p-3">
-                          <p className="font-medium leading-snug">{trip.name}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
+                        <div className="px-2 py-1.5">
+                          <p className="truncate text-sm font-medium leading-snug">
+                            {trip.name}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
                             {formatTripDateRange(
                               trip.startDate,
                               trip.endDate,
                             )}
                             {" · "}
-                            {tripDayCount(trip.startDate, trip.endDate)} day
-                            {tripDayCount(trip.startDate, trip.endDate) === 1
-                              ? ""
-                              : "s"}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
                             {trip.assetCount} item
                             {trip.assetCount === 1 ? "" : "s"}
                           </p>
                         </div>
                       </Link>
-                      <button
-                        type="button"
-                        aria-label="Delete trip"
-                        className="absolute right-2 top-2 rounded-lg bg-background/80 p-1.5 opacity-0 shadow-sm transition group-hover:opacity-100"
-                        disabled={deletingId === trip.id}
-                        onClick={() => void deleteTrip(trip)}
-                      >
-                        <Trash2 className="size-4 text-muted-foreground" />
-                      </button>
+                      <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                        <button
+                          type="button"
+                          aria-label="Trip settings"
+                          className="rounded-md bg-background/90 p-1 shadow-sm"
+                          onClick={(e) => openSettings(trip, e)}
+                        >
+                          <Settings2 className="size-3.5 text-muted-foreground" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete trip"
+                          className="rounded-md bg-background/90 p-1 shadow-sm"
+                          disabled={deletingId === trip.id}
+                          onClick={(e) => void deleteTrip(trip, e)}
+                        >
+                          <Trash2 className="size-3.5 text-muted-foreground" />
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -250,6 +261,13 @@ export function TripsList() {
           </div>
         )}
       </div>
+
+      <TripSettingsDialog
+        trip={settingsTrip}
+        open={settingsTrip != null}
+        onClose={() => setSettingsTrip(null)}
+        onSaved={reload}
+      />
     </div>
   );
 }

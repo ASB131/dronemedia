@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import { date, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
+import { assets } from "./assets";
 import { users } from "./users";
 
 export const trips = pgTable(
@@ -15,6 +16,11 @@ export const trips = pgTable(
     startDate: date("start_date", { mode: "string" }).notNull(),
     /** Inclusive calendar end (UTC date). */
     endDate: date("end_date", { mode: "string" }).notNull(),
+    coverAssetId: uuid("cover_asset_id").references(() => assets.id, {
+      onDelete: "set null",
+    }),
+    /** Custom uploaded cover in app storage (not a library asset). */
+    coverImageKey: text("cover_image_key"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),

@@ -15,6 +15,7 @@ const patchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   startDate: z.string().min(10).max(10).optional(),
   endDate: z.string().min(10).max(10).optional(),
+  coverAssetId: z.string().uuid().nullable().optional(),
 });
 
 export async function GET(

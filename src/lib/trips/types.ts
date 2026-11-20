@@ -4,6 +4,9 @@ export type TripSummaryDto = {
   startDate: string;
   endDate: string;
   assetCount: number;
+  /** Resolved thumbnail URL for list cards (custom cover, chosen asset, or auto). */
+  coverThumbnailUrl: string | null;
+  hasCustomCover: boolean;
   coverAssetId: string | null;
   createdAt: string;
 };

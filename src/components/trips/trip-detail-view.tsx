@@ -24,7 +24,13 @@ export function TripDetailView({ tripId }: { tripId: string }) {
   const load = useCallback(async () => {
     const response = await fetch(`/api/trips/${tripId}`);
     if (!response.ok) {
-      setError(response.status === 404 ? "Trip not found" : "Failed to load");
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setError(
+        body?.error ??
+          (response.status === 404 ? "Trip not found" : "Failed to load"),
+      );
       return;
     }
     const payload = (await response.json()) as { trip: TripDetailDto };

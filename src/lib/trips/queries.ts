@@ -3,7 +3,9 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ApiError } from "@/lib/api/auth";
 import { getWebDb } from "@/lib/db";
 import { assets, trips } from "@/lib/db/schema";
+import { tripCoverApiUrl } from "@/lib/trips/cover";
 import type { TripDetailDto, TripSummaryDto } from "@/lib/trips/types";
+import { getStorageAdapter } from "@/lib/storage";
 
 export type { TripDetailDto, TripSummaryDto } from "@/lib/trips/types";
 
@@ -62,6 +64,19 @@ async function coverAssetIdForRange(
   return row?.id ?? null;
 }
 
+function resolveCoverThumbnailUrl(
+  trip: {
+    id: string;
+    coverImageKey: string | null;
+    coverAssetId: string | null;
+  },
+  fallbackAssetId: string | null,
+): string | null {
+  if (trip.coverImageKey) return tripCoverApiUrl(trip.id);
+  const assetId = trip.coverAssetId ?? fallbackAssetId;
+  return assetId ? `/api/assets/${assetId}/thumbnail` : null;
+}
+
 async function assetCountForRange(
   userId: string,
   startDate: string,
@@ -91,6 +106,8 @@ export async function listTripsForUser(userId: string): Promise<TripSummaryDto[]
       name: trips.name,
       startDate: trips.startDate,
       endDate: trips.endDate,
+      coverAssetId: trips.coverAssetId,
+      coverImageKey: trips.coverImageKey,
       createdAt: trips.createdAt,
     })
     .from(trips)
@@ -99,7 +116,7 @@ export async function listTripsForUser(userId: string): Promise<TripSummaryDto[]
 
   const results: TripSummaryDto[] = [];
   for (const row of rows) {
-    const [assetCount, coverAssetId] = await Promise.all([
+    const [assetCount, autoCover] = await Promise.all([
       assetCountForRange(userId, row.startDate, row.endDate),
       coverAssetIdForRange(userId, row.startDate, row.endDate),
     ]);
@@ -109,7 +126,9 @@ export async function listTripsForUser(userId: string): Promise<TripSummaryDto[]
       startDate: row.startDate,
       endDate: row.endDate,
       assetCount,
-      coverAssetId,
+      coverAssetId: row.coverAssetId,
+      coverThumbnailUrl: resolveCoverThumbnailUrl(row, autoCover),
+      hasCustomCover: Boolean(row.coverImageKey),
       createdAt: row.createdAt.toISOString(),
     });
   }
@@ -135,14 +154,14 @@ export async function getTripForUser(
     .select({
       total: sql<number>`count(*)::int`,
       photos: sql<number>`count(*) filter (where ${assets.assetType} = 'photo')::int`,
-      videos: sql<number>`count(*) filter (where ${assets.assetType} in ('video', 'sequence') and coalesce(${assets.sequenceKind}, '') != 'panorama')::int`,
+      videos: sql<number>`count(*) filter (where ${assets.assetType} in ('video', 'sequence') and (${assets.sequenceKind} is null or ${assets.sequenceKind} <> 'panorama'))::int`,
       panoramas: sql<number>`count(*) filter (where ${assets.sequenceKind} = 'panorama')::int`,
       located: sql<number>`count(*) filter (where coalesce(${assets.locationOverride}, ${assets.locationOriginal}) is not null)::int`,
     })
     .from(assets)
     .where(base);
 
-  const coverAssetId = await coverAssetIdForRange(
+  const autoCover = await coverAssetIdForRange(
     userId,
     trip.startDate,
     trip.endDate,
@@ -154,7 +173,9 @@ export async function getTripForUser(
     startDate: trip.startDate,
     endDate: trip.endDate,
     assetCount: counts?.total ?? 0,
-    coverAssetId,
+    coverAssetId: trip.coverAssetId,
+    coverThumbnailUrl: resolveCoverThumbnailUrl(trip, autoCover),
+    hasCustomCover: Boolean(trip.coverImageKey),
     createdAt: trip.createdAt.toISOString(),
     photoCount: counts?.photos ?? 0,
     videoCount: counts?.videos ?? 0,
@@ -188,10 +209,50 @@ export async function createTrip(
   return row!.id;
 }
 
+export async function requireTripOwnership(userId: string, tripId: string) {
+  const db = getWebDb();
+  const [trip] = await db
+    .select()
+    .from(trips)
+    .where(and(eq(trips.id, tripId), eq(trips.userId, userId)))
+    .limit(1);
+  if (!trip) throw new ApiError(404, "Trip not found");
+  return trip;
+}
+
+async function assertAssetForTripCover(
+  userId: string,
+  assetId: string,
+  startDate: string,
+  endDate: string,
+) {
+  const db = getWebDb();
+  const [asset] = await db
+    .select({ id: assets.id })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.id, assetId),
+        eq(assets.userId, userId),
+        isNull(assets.deletedAt),
+        tripDateRangeCondition(startDate, endDate),
+      ),
+    )
+    .limit(1);
+  if (!asset) {
+    throw new ApiError(400, "Cover must be media from this trip's date range");
+  }
+}
+
 export async function updateTrip(
   userId: string,
   tripId: string,
-  input: { name?: string; startDate?: string; endDate?: string },
+  input: {
+    name?: string;
+    startDate?: string;
+    endDate?: string;
+    coverAssetId?: string | null;
+  },
 ) {
   const db = getWebDb();
   const [existing] = await db
@@ -214,12 +275,35 @@ export async function updateTrip(
       : existing.endDate;
   assertTripDateOrder(startDate, endDate);
 
+  let coverAssetId = existing.coverAssetId;
+  let coverImageKey = existing.coverImageKey;
+  if (input.coverAssetId !== undefined) {
+    if (input.coverAssetId === null) {
+      coverAssetId = null;
+    } else {
+      await assertAssetForTripCover(
+        userId,
+        input.coverAssetId,
+        startDate,
+        endDate,
+      );
+      coverAssetId = input.coverAssetId;
+      if (coverImageKey) {
+        const storage = getStorageAdapter();
+        await storage.delete(coverImageKey, { tier: "app" }).catch(() => undefined);
+        coverImageKey = null;
+      }
+    }
+  }
+
   await db
     .update(trips)
     .set({
       name,
       startDate,
       endDate,
+      coverAssetId,
+      coverImageKey,
       updatedAt: new Date(),
     })
     .where(eq(trips.id, tripId));
@@ -235,6 +319,15 @@ export async function deleteTrip(userId: string, tripId: string) {
     .where(and(eq(trips.id, tripId), eq(trips.userId, userId)))
     .limit(1);
   if (!existing) return false;
+  const [row] = await db
+    .select({ coverImageKey: trips.coverImageKey })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (row?.coverImageKey) {
+    const storage = getStorageAdapter();
+    await storage.delete(row.coverImageKey, { tier: "app" }).catch(() => undefined);
+  }
   await db.delete(trips).where(eq(trips.id, tripId));
   return true;
 }
