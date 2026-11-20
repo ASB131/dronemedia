@@ -238,7 +238,7 @@ export function TripsList() {
                         <button
                           type="button"
                           aria-label="Trip settings"
-                          className="rounded-md bg-background/90 p-1 shadow-sm"
+                          className="cursor-pointer rounded-md bg-background/90 p-1 shadow-sm"
                           onClick={(e) => openSettings(trip, e)}
                         >
                           <Settings2 className="size-3.5 text-muted-foreground" />
@@ -246,7 +246,7 @@ export function TripsList() {
                         <button
                           type="button"
                           aria-label="Delete trip"
-                          className="rounded-md bg-background/90 p-1 shadow-sm"
+                          className="cursor-pointer rounded-md bg-background/90 p-1 shadow-sm"
                           disabled={deletingId === trip.id}
                           onClick={(e) => void deleteTrip(trip, e)}
                         >

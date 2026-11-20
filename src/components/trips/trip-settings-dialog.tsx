@@ -30,6 +30,15 @@ export function TripSettingsDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (!open || !trip) return;
     setName(trip.name);
     setStartDate(trip.startDate);
@@ -119,12 +128,17 @@ export function TripSettingsDialog({
   }
 
   return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
       <div
         role="dialog"
         aria-modal
         aria-labelledby="trip-settings-title"
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-background shadow-xl"
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 id="trip-settings-title" className="text-sm font-semibold">
@@ -221,8 +235,10 @@ export function TripSettingsDialog({
                     <button
                       key={asset.id}
                       type="button"
-                      className={`aspect-square overflow-hidden rounded-md border-2 ${
-                        selected ? "border-primary" : "border-transparent"
+                      className={`aspect-square cursor-pointer overflow-hidden rounded-md border-2 transition hover:opacity-90 ${
+                        selected
+                          ? "border-primary ring-2 ring-primary/30"
+                          : "border-transparent hover:border-border"
                       }`}
                       onClick={() => {
                         setCoverAssetId(asset.id);

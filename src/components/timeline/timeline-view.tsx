@@ -354,11 +354,15 @@ function mergeTimelineSections(
 export function TimelineView({
   favoritesOnly = false,
   tripId,
+  variant = "page",
 }: {
   favoritesOnly?: boolean;
   /** When set, loads media for this trip date range only. */
   tripId?: string;
+  /** Trip detail: compact chrome so the parent page owns the layout. */
+  variant?: "page" | "embedded";
 }) {
+  const embedded = variant === "embedded";
   const [data, setData] = useState<TimelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -780,9 +784,11 @@ export function TimelineView({
         <p className="max-w-md text-sm text-muted-foreground">
           {favoritesOnly
             ? "Mark assets as favorites to see them here."
-            : mediaType !== "all"
-              ? "No media matches this filter."
-              : "Upload drone photos and videos to populate Photos."}
+            : tripId
+              ? "No media falls within this trip’s date range."
+              : mediaType !== "all"
+                ? "No media matches this filter."
+                : "Upload drone photos and videos to populate Photos."}
         </p>
       </div>
     );
@@ -790,9 +796,23 @@ export function TimelineView({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h1 className="mr-auto text-lg font-semibold">
-          {favoritesOnly ? "Favorites" : "Photos / Videos"}
+      <div
+        className={cn(
+          "flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4",
+          embedded ? "bg-card/50 py-2" : "py-3",
+        )}
+      >
+        <h1
+          className={cn(
+            "mr-auto font-semibold",
+            embedded ? "text-sm text-foreground" : "text-lg",
+          )}
+        >
+          {favoritesOnly
+            ? "Favorites"
+            : embedded
+              ? "Media"
+              : "Photos / Videos"}
         </h1>
         <div className="flex overflow-hidden rounded-full border border-border text-xs">
           {(
