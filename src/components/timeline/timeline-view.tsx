@@ -381,20 +381,6 @@ export function TimelineView({
     monthLabel: string | null;
     dayLabel: string | null;
   }>({ year: null, monthLabel: null, dayLabel: null });
-  const [scrubVisible, setScrubVisible] = useState(false);
-  const [scrubLabel, setScrubLabel] = useState<{
-    year: number | null;
-    monthLabel: string | null;
-  }>({ year: null, monthLabel: null });
-  const [railHover, setRailHover] = useState<{
-    year: number;
-    monthLabel: string | null;
-    ratio: number;
-    index: number;
-  } | null>(null);
-  const [scrubDragging, setScrubDragging] = useState(false);
-  const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrubTrackRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const widthRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
@@ -531,31 +517,6 @@ export function TimelineView({
     rowVirtualizer.measure();
   }, [timelineWidth, rowVirtualizer]);
 
-  const scrubMarkers = useMemo(() => {
-    const markers: Array<{
-      index: number;
-      year: number;
-      monthLabel?: string;
-      ratio: number;
-    }> = [];
-    const total = Math.max(1, virtualItems.length - 1);
-    for (let i = 0; i < virtualItems.length; i += 1) {
-      const item = virtualItems[i];
-      if (!item) continue;
-      if (item.type === "year") {
-        markers.push({ index: i, year: item.year, ratio: i / total });
-      } else if (item.type === "month") {
-        markers.push({
-          index: i,
-          year: item.year,
-          monthLabel: item.monthLabel,
-          ratio: i / total,
-        });
-      }
-    }
-    return markers;
-  }, [virtualItems]);
-
   useEffect(() => {
     if (!parentRef.current) return;
     const scrollElement = parentRef.current;
@@ -584,7 +545,6 @@ export function TimelineView({
         if (year && monthLabel && dayLabel) break;
       }
       setStickyHeader({ year, monthLabel, dayLabel });
-      setScrubLabel({ year, monthLabel });
     }
 
     function onScroll() {
@@ -599,56 +559,14 @@ export function TimelineView({
       ) {
         void loadMore();
       }
-      setScrubVisible(true);
-      if (scrubHideTimer.current) clearTimeout(scrubHideTimer.current);
-      scrubHideTimer.current = setTimeout(() => setScrubVisible(false), 900);
     }
 
     scrollElement.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => {
       scrollElement.removeEventListener("scroll", onScroll);
-      if (scrubHideTimer.current) clearTimeout(scrubHideTimer.current);
     };
   }, [loadMore, rowVirtualizer, virtualItems]);
-
-  function jumpToIndex(index: number) {
-    rowVirtualizer.scrollToIndex(index, { align: "start" });
-  }
-
-  function markerAtRatio(ratio: number) {
-    if (scrubMarkers.length === 0) return null;
-    let best = scrubMarkers[0]!;
-    let bestDelta = Math.abs(best.ratio - ratio);
-    for (const marker of scrubMarkers) {
-      const delta = Math.abs(marker.ratio - ratio);
-      if (delta < bestDelta) {
-        best = marker;
-        bestDelta = delta;
-      }
-    }
-    return best;
-  }
-
-  function applyScrubPointer(clientY: number, jump: boolean) {
-    const track = scrubTrackRef.current;
-    if (!track || scrubMarkers.length === 0) return;
-    const rect = track.getBoundingClientRect();
-    const ratio = Math.min(
-      1,
-      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
-    );
-    const marker = markerAtRatio(ratio);
-    if (!marker) return;
-    setScrubVisible(true);
-    setRailHover({
-      year: marker.year,
-      monthLabel: marker.monthLabel ?? null,
-      ratio,
-      index: marker.index,
-    });
-    if (jump) jumpToIndex(marker.index);
-  }
 
   const rememberAssetOpen = useCallback(
     (assetId: string) => {
@@ -1030,8 +948,8 @@ export function TimelineView({
         {(stickyHeader.year ||
           stickyHeader.monthLabel ||
           stickyHeader.dayLabel) && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-border/70 bg-background/95 px-3 py-2 pr-14 backdrop-blur-md">
-            {stickyHeader.year && !scrubVisible ? (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-border/70 bg-background/95 px-3 py-2 backdrop-blur-md">
+            {stickyHeader.year ? (
               <p className="text-2xl font-semibold tracking-tight">
                 {stickyHeader.year}
               </p>
@@ -1039,10 +957,8 @@ export function TimelineView({
             {stickyHeader.monthLabel ? (
               <p
                 className={cn(
-                  scrubVisible
-                    ? "text-sm font-semibold text-foreground"
-                    : "text-sm font-medium text-primary",
-                  stickyHeader.year && !scrubVisible && "mt-0.5",
+                  "text-sm font-medium text-primary",
+                  stickyHeader.year && "mt-0.5",
                 )}
               >
                 {stickyHeader.monthLabel}
@@ -1053,9 +969,6 @@ export function TimelineView({
                 className={cn(
                   "text-xs text-muted-foreground",
                   (stickyHeader.monthLabel || stickyHeader.year) && "mt-0.5",
-                  scrubVisible &&
-                    !stickyHeader.monthLabel &&
-                    "text-sm font-medium text-foreground",
                 )}
               >
                 {stickyHeader.dayLabel}
@@ -1066,7 +979,7 @@ export function TimelineView({
 
         <div
           ref={parentRef}
-          className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pr-14 pt-16"
+          className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pt-16"
         >
           <div ref={widthRef} className="w-full">
           <OnThisDayPanel
@@ -1167,90 +1080,6 @@ export function TimelineView({
           ) : null}
           </div>
         </div>
-
-        {scrubMarkers.length > 0 ? (
-          <div
-            className={cn(
-              "absolute inset-y-2 right-0 z-30 w-16 transition-opacity duration-200",
-              scrubVisible || railHover || scrubDragging
-                ? "opacity-100"
-                : "opacity-55",
-            )}
-            onPointerEnter={() => setScrubVisible(true)}
-          >
-            <div className="relative h-full">
-              {(railHover ?? (scrubVisible ? scrubLabel : null)) &&
-              (railHover || scrubLabel.year) ? (
-                <div
-                  className="pointer-events-none absolute right-[3.75rem] z-10 max-w-[9rem] -translate-y-1/2 rounded-md bg-primary px-2 py-1 text-right text-primary-foreground shadow-md"
-                  style={{
-                    top: `${(railHover?.ratio ?? 0.5) * 100}%`,
-                  }}
-                >
-                  <p className="text-xs font-semibold leading-tight">
-                    {railHover?.year ?? scrubLabel.year}
-                  </p>
-                  {(railHover?.monthLabel ?? scrubLabel.monthLabel) ? (
-                    <p className="mt-0.5 text-[10px] leading-tight opacity-90">
-                      {railHover?.monthLabel ?? scrubLabel.monthLabel}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              <div
-                ref={scrubTrackRef}
-                className="absolute inset-y-0 right-0 w-14 cursor-pointer touch-none"
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  setScrubDragging(true);
-                  setScrubVisible(true);
-                  applyScrubPointer(event.clientY, true);
-                }}
-                onPointerMove={(event) => {
-                  const dragging = event.currentTarget.hasPointerCapture(
-                    event.pointerId,
-                  );
-                  applyScrubPointer(event.clientY, dragging);
-                }}
-                onPointerUp={(event) => {
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                    event.currentTarget.releasePointerCapture(event.pointerId);
-                  }
-                  setScrubDragging(false);
-                }}
-                onPointerLeave={() => {
-                  if (!scrubDragging) setRailHover(null);
-                }}
-              >
-                <div className="absolute bottom-1 right-2 top-1 w-px bg-border/80" />
-                {scrubMarkers.map((marker) =>
-                  marker.monthLabel ? (
-                    <span
-                      key={`m-${marker.index}`}
-                      className="absolute right-[5px] size-1.5 -translate-y-1/2 rounded-full bg-muted-foreground/80"
-                      style={{ top: `${marker.ratio * 100}%` }}
-                      aria-hidden
-                    />
-                  ) : (
-                    <button
-                      key={`y-${marker.index}`}
-                      type="button"
-                      title={String(marker.year)}
-                      className="absolute right-4 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold leading-none text-muted-foreground hover:text-primary"
-                      style={{ top: `${marker.ratio * 100}%` }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        jumpToIndex(marker.index);
-                      }}
-                    >
-                      {marker.year}
-                    </button>
-                  ),
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
       )}
     </div>

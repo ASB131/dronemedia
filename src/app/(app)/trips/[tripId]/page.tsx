@@ -6,5 +6,9 @@ export default async function TripDetailPage({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  return <TripDetailView tripId={tripId} />;
+  return (
+    <div className="h-full min-h-0">
+      <TripDetailView tripId={tripId} />
+    </div>
+  );
 }

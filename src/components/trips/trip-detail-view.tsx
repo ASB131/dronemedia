@@ -107,115 +107,110 @@ export function TripDetailView({ tripId }: { tripId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="grid shrink-0 gap-4 border-b border-border px-4 py-3 lg:grid-cols-[minmax(0,1fr)_min(44%,26rem)] lg:items-start lg:gap-5 lg:py-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-start gap-2">
-            <Link
-              href="/trips"
-              aria-label="All trips"
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <Link
+          href="/trips"
+          className="inline-flex size-9 items-center justify-center rounded-full hover:bg-muted"
+        >
+          <ArrowLeft className="size-5" />
+        </Link>
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <form
+              onSubmit={(e) => void saveTrip(e)}
+              className="space-y-2"
             >
-              <ArrowLeft className="size-5" />
-            </Link>
-            <div className="min-w-0 flex-1">
-              {editing ? (
-                <form
-                  onSubmit={(e) => void saveTrip(e)}
-                  className="space-y-3"
-                >
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    maxLength={120}
-                    required
-                  />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      required
-                    />
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      min={startDate}
-                      required
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="submit" size="sm" disabled={busy}>
-                      Save
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditing(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  <h1 className="text-xl font-semibold tracking-tight">
-                    {trip.name}
-                  </h1>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    {formatTripDateRange(trip.startDate, trip.endDate)} ·{" "}
-                    {days} day{days === 1 ? "" : "s"}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    photos {trip.photoCount} · videos {trip.videoCount}
-                  </p>
-                </>
-              )}
-            </div>
-            {!editing ? (
-              <div className="flex shrink-0 gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setEditing(true)}
-                >
-                  <Pencil className="size-4" />
-                  Edit
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={120}
+                required
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate}
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={busy}>
+                  Save
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => void deleteTrip()}
-                  disabled={busy}
+                  onClick={() => setEditing(false)}
                 >
-                  <Trash2 className="size-4" />
-                  Delete
+                  Cancel
                 </Button>
               </div>
-            ) : null}
-          </div>
-          {error ? (
-            <p className="mt-2 text-sm text-destructive">{error}</p>
-          ) : null}
+            </form>
+          ) : (
+            <>
+              <h1 className="truncate text-xl font-semibold tracking-tight">
+                {trip.name}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {formatTripDateRange(trip.startDate, trip.endDate)} · {days}{" "}
+                day{days === 1 ? "" : "s"} · photos {trip.photoCount} · videos{" "}
+                {trip.videoCount}
+              </p>
+            </>
+          )}
         </div>
+        {!editing ? (
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void deleteTrip()}
+              disabled={busy}
+            >
+              <Trash2 className="size-4" />
+              Delete
+            </Button>
+          </div>
+        ) : null}
+        {error ? (
+          <p className="w-full text-sm text-destructive">{error}</p>
+        ) : null}
+      </div>
 
-        <div className="overflow-hidden rounded-xl border border-border bg-card lg:row-span-1">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <section className="flex min-h-[42vh] min-w-0 flex-col overflow-hidden border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r">
+          <TimelineView tripId={tripId} variant="embedded" />
+        </section>
+
+        <section className="relative flex min-h-[36vh] flex-col bg-muted/30 lg:min-h-0">
           {trip.locatedCount > 0 ? (
             <TripMapView
               tripId={tripId}
-              className="h-[min(42vh,360px)] min-h-[220px] rounded-none border-0 bg-muted lg:h-[min(48vh,400px)]"
+              className="absolute inset-0 min-h-full rounded-none border-0"
             />
           ) : (
-            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            <div className="flex h-full min-h-48 items-center justify-center px-4 text-center text-sm text-muted-foreground">
               No geotagged media in this date range.
-            </p>
+            </div>
           )}
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <TimelineView tripId={tripId} variant="embedded" />
+        </section>
       </div>
     </div>
   );
