@@ -183,11 +183,14 @@ export function HomeDashboardView() {
 
       </section>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+      <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col gap-2 lg:min-h-0">
         <h2 className="text-sm font-semibold text-foreground">
           Recent flights
+          <span className="ml-2 font-normal text-muted-foreground">
+            (10 latest)
+          </span>
         </h2>
-        <RecentFlightPathsMap flights={recentFlightPaths} className="flex-1" />
+        <RecentFlightPathsMap flights={recentFlightPaths} className="min-h-0 flex-1" />
       </section>
     </div>
   );

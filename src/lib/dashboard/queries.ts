@@ -26,9 +26,8 @@ export type DashboardPayload = {
   recentFlightPaths: DashboardFlightPathDto[];
 };
 
-const RECENT_PATH_LIMIT = 10;
-/** Max flights to scan when building recent paths (skip GPS-less sessions). */
-const RECENT_PATH_SCAN = 40;
+/** Most recent flight sessions to show on the home map (with path when GPS exists). */
+const RECENT_FLIGHT_COUNT = 10;
 
 export async function getDashboardStats(
   userId: string,
@@ -72,18 +71,16 @@ export async function getDashboardStats(
 
 export async function listRecentFlightPathsForUser(
   userId: string,
-  limit = RECENT_PATH_LIMIT,
 ): Promise<DashboardFlightPathDto[]> {
   const ordered = await listFlightsForUser(userId);
-  const scan = ordered.slice(0, RECENT_PATH_SCAN);
+  const latest = ordered.slice(0, RECENT_FLIGHT_COUNT);
   const pathMap = await getCombinedPathsForFlightIds(
     userId,
-    scan.map((flight) => flight.id),
+    latest.map((flight) => flight.id),
   );
 
   const recentFlightPaths: DashboardFlightPathDto[] = [];
-  for (const flight of scan) {
-    if (recentFlightPaths.length >= limit) break;
+  for (const flight of latest) {
     const coordinates = pathMap.get(flight.id);
     if (!coordinates || coordinates.length < 2) continue;
     recentFlightPaths.push({

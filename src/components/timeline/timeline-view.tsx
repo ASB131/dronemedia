@@ -392,7 +392,9 @@ export function TimelineView({
     ratio: number;
     index: number;
   } | null>(null);
+  const [scrubDragging, setScrubDragging] = useState(false);
   const scrubHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubTrackRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const widthRef = useRef<HTMLDivElement>(null);
   const loadingMoreRef = useRef(false);
@@ -616,11 +618,9 @@ export function TimelineView({
 
   function markerAtRatio(ratio: number) {
     if (scrubMarkers.length === 0) return null;
-    const months = scrubMarkers.filter((marker) => marker.monthLabel);
-    const pool = months.length > 0 ? months : scrubMarkers;
-    let best = pool[0]!;
+    let best = scrubMarkers[0]!;
     let bestDelta = Math.abs(best.ratio - ratio);
-    for (const marker of pool) {
+    for (const marker of scrubMarkers) {
       const delta = Math.abs(marker.ratio - ratio);
       if (delta < bestDelta) {
         best = marker;
@@ -628,6 +628,26 @@ export function TimelineView({
       }
     }
     return best;
+  }
+
+  function applyScrubPointer(clientY: number, jump: boolean) {
+    const track = scrubTrackRef.current;
+    if (!track || scrubMarkers.length === 0) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.min(
+      1,
+      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
+    );
+    const marker = markerAtRatio(ratio);
+    if (!marker) return;
+    setScrubVisible(true);
+    setRailHover({
+      year: marker.year,
+      monthLabel: marker.monthLabel ?? null,
+      ratio,
+      index: marker.index,
+    });
+    if (jump) jumpToIndex(marker.index);
   }
 
   const rememberAssetOpen = useCallback(
@@ -777,22 +797,18 @@ export function TimelineView({
     );
   }
 
-  if (data.sections.length === 0 && data.onThisDay.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <p className="text-lg font-medium">No media yet</p>
-        <p className="max-w-md text-sm text-muted-foreground">
-          {favoritesOnly
-            ? "Mark assets as favorites to see them here."
-            : tripId
-              ? "No media falls within this trip’s date range."
-              : mediaType !== "all"
-                ? "No media matches this filter."
-                : "Upload drone photos and videos to populate Photos."}
-        </p>
-      </div>
-    );
-  }
+  const timelineEmpty =
+    data.sections.length === 0 && data.onThisDay.length === 0;
+
+  const emptyTimelineHint = favoritesOnly
+    ? "Mark assets as favorites to see them here."
+    : mediaType !== "all"
+      ? tripId
+        ? `No ${mediaType === "panorama" ? "panoramas" : `${mediaType}s`} in this trip. Try another filter above.`
+        : "No media matches this filter. Try another type above."
+      : tripId
+        ? "No media falls within this trip’s date range."
+        : "Upload drone photos and videos to populate Photos.";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -1000,6 +1016,16 @@ export function TimelineView({
         </div>
       ) : null}
 
+      {timelineEmpty ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+          <p className="text-sm font-medium text-foreground">
+            {mediaType !== "all" ? "Nothing to show" : "No media yet"}
+          </p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            {emptyTimelineHint}
+          </p>
+        </div>
+      ) : (
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {(stickyHeader.year ||
           stickyHeader.monthLabel ||
@@ -1040,7 +1066,7 @@ export function TimelineView({
 
         <div
           ref={parentRef}
-          className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pr-8 pt-16"
+          className="dm-scrollbar absolute inset-0 overflow-auto px-3 py-3 pr-14 pt-16"
         >
           <div ref={widthRef} className="w-full">
           <OnThisDayPanel
@@ -1145,61 +1171,72 @@ export function TimelineView({
         {scrubMarkers.length > 0 ? (
           <div
             className={cn(
-              "absolute inset-y-3 right-0 z-30 flex w-12 flex-col items-end transition-opacity duration-200",
-              scrubVisible || railHover ? "opacity-100" : "opacity-40",
+              "absolute inset-y-2 right-0 z-30 w-16 transition-opacity duration-200",
+              scrubVisible || railHover || scrubDragging
+                ? "opacity-100"
+                : "opacity-55",
             )}
+            onPointerEnter={() => setScrubVisible(true)}
           >
-            <div className="relative h-full w-full">
+            <div className="relative h-full">
               {(railHover ?? (scrubVisible ? scrubLabel : null)) &&
               (railHover || scrubLabel.year) ? (
                 <div
-                  className="pointer-events-none absolute right-8 z-10 -translate-y-1/2 rounded-lg bg-primary px-2.5 py-1.5 text-right text-primary-foreground shadow-md"
+                  className="pointer-events-none absolute right-[3.75rem] z-10 max-w-[9rem] -translate-y-1/2 rounded-md bg-primary px-2 py-1 text-right text-primary-foreground shadow-md"
                   style={{
-                    top: railHover
-                      ? `${railHover.ratio * 100}%`
-                      : "50%",
+                    top: `${(railHover?.ratio ?? 0.5) * 100}%`,
                   }}
                 >
-                  <p className="text-sm font-semibold leading-none">
+                  <p className="text-xs font-semibold leading-tight">
                     {railHover?.year ?? scrubLabel.year}
                   </p>
                   {(railHover?.monthLabel ?? scrubLabel.monthLabel) ? (
-                    <p className="mt-1 text-[10px] leading-none opacity-90">
+                    <p className="mt-0.5 text-[10px] leading-tight opacity-90">
                       {railHover?.monthLabel ?? scrubLabel.monthLabel}
                     </p>
                   ) : null}
                 </div>
               ) : null}
               <div
-                className="absolute inset-y-0 right-0 w-10 cursor-pointer"
-                onPointerMove={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const ratio = Math.min(
-                    1,
-                    Math.max(0, (event.clientY - rect.top) / rect.height),
-                  );
-                  const marker = markerAtRatio(ratio);
-                  if (!marker) return;
-                  setRailHover({
-                    year: marker.year,
-                    monthLabel: marker.monthLabel ?? null,
-                    ratio,
-                    index: marker.index,
-                  });
+                ref={scrubTrackRef}
+                className="absolute inset-y-0 right-0 w-14 cursor-pointer touch-none"
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setScrubDragging(true);
+                  setScrubVisible(true);
+                  applyScrubPointer(event.clientY, true);
                 }}
-                onPointerLeave={() => setRailHover(null)}
-                onClick={() => {
-                  if (railHover) jumpToIndex(railHover.index);
+                onPointerMove={(event) => {
+                  const dragging = event.currentTarget.hasPointerCapture(
+                    event.pointerId,
+                  );
+                  applyScrubPointer(event.clientY, dragging);
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }
+                  setScrubDragging(false);
+                }}
+                onPointerLeave={() => {
+                  if (!scrubDragging) setRailHover(null);
                 }}
               >
-                {scrubMarkers
-                  .filter((marker) => !marker.monthLabel)
-                  .map((marker) => (
+                <div className="absolute bottom-1 right-2 top-1 w-px bg-border/80" />
+                {scrubMarkers.map((marker) =>
+                  marker.monthLabel ? (
+                    <span
+                      key={`m-${marker.index}`}
+                      className="absolute right-[5px] size-1.5 -translate-y-1/2 rounded-full bg-muted-foreground/80"
+                      style={{ top: `${marker.ratio * 100}%` }}
+                      aria-hidden
+                    />
+                  ) : (
                     <button
                       key={`y-${marker.index}`}
                       type="button"
                       title={String(marker.year)}
-                      className="absolute right-1 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground hover:text-primary"
+                      className="absolute right-4 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold leading-none text-muted-foreground hover:text-primary"
                       style={{ top: `${marker.ratio * 100}%` }}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -1208,12 +1245,14 @@ export function TimelineView({
                     >
                       {marker.year}
                     </button>
-                  ))}
+                  ),
+                )}
               </div>
             </div>
           </div>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

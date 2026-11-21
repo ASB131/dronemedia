@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 
@@ -39,8 +39,62 @@ export function RecentFlightPathsMap({
   routerRef.current = router;
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  const [mapReady, setMapReady] = useState(false);
 
   const flightsKey = flights.map((f) => f.flightId).join(",");
+
+  const drawPaths = useCallback(async () => {
+    const map = mapInstanceRef.current;
+    const layer = pathsLayerRef.current;
+    if (!map || !layer) return;
+
+    const L = window.L;
+    if (!L) return;
+
+    layer.clearLayers();
+    const bounds: Array<[number, number]> = [];
+    const mapTheme = readDocumentMapTheme();
+
+    flights.forEach((flight, index) => {
+      const raw = flight.coordinates.map(
+        ([lng, lat]) => [lng, lat] as [number, number],
+      );
+      const smoothed = prepareSmoothPath(raw);
+      const drawLatLngs: LatLngExpression[] = smoothed.map(([lng, lat]) => [
+        lat,
+        lng,
+      ]);
+      if (drawLatLngs.length < 2) return;
+
+      for (const point of smoothed) {
+        bounds.push([point[1], point[0]]);
+      }
+
+      const color = pathColorForIndex(index, mapTheme);
+      const line = L.polyline(drawLatLngs, {
+        color,
+        weight: 4,
+        opacity: 0.85,
+        lineJoin: "round",
+        lineCap: "round",
+        smoothFactor: 2,
+      });
+      const title = flight.title ?? "Flight";
+      line.bindTooltip(title, { sticky: true, opacity: 0.92 });
+      line.on("click", () => {
+        routerRef.current.push(`/flights/${flight.flightId}`);
+      });
+      layer.addLayer(line);
+    });
+
+    if (bounds.length === 1) {
+      map.setView(bounds[0]!, 13);
+    } else if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
+    }
+
+    map.invalidateSize({ animate: false });
+  }, [flights, flightsKey]);
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
@@ -62,6 +116,7 @@ export function RecentFlightPathsMap({
 
       pathsLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
+      setMapReady(true);
 
       const onTheme = () => {
         const nextTheme = readDocumentMapTheme();
@@ -83,6 +138,7 @@ export function RecentFlightPathsMap({
 
     return () => {
       disposed = true;
+      setMapReady(false);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -95,70 +151,25 @@ export function RecentFlightPathsMap({
   }, []);
 
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    const layer = pathsLayerRef.current;
-    if (!map || !layer) return;
-
-    void (async () => {
-      const L = window.L;
-      if (!L) return;
-
-      layer.clearLayers();
-      const bounds: Array<[number, number]> = [];
-      const mapTheme = readDocumentMapTheme();
-
-      flights.forEach((flight, index) => {
-        const raw = flight.coordinates.map(
-          ([lng, lat]) => [lng, lat] as [number, number],
-        );
-        const smoothed = prepareSmoothPath(raw);
-        const drawLatLngs: LatLngExpression[] = smoothed.map(([lng, lat]) => [
-          lat,
-          lng,
-        ]);
-        if (drawLatLngs.length < 2) return;
-
-        for (const point of smoothed) {
-          bounds.push([point[1], point[0]]);
-        }
-
-        const color = pathColorForIndex(index, mapTheme);
-        const line = L.polyline(drawLatLngs, {
-          color,
-          weight: 4,
-          opacity: 0.85,
-          lineJoin: "round",
-          lineCap: "round",
-          smoothFactor: 2,
-        });
-        const title = flight.title ?? "Flight";
-        line.bindTooltip(title, { sticky: true, opacity: 0.92 });
-        line.on("click", () => {
-          routerRef.current.push(`/flights/${flight.flightId}`);
-        });
-        layer.addLayer(line);
-      });
-
-      if (bounds.length > 1) {
-        map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
-      }
-    })();
-  }, [flightsKey, flights]);
+    if (!mapReady) return;
+    void drawPaths();
+  }, [mapReady, drawPaths]);
 
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    const frame = window.requestAnimationFrame(() => {
-      map.invalidateSize({ animate: false });
+    const el = mapRef.current;
+    if (!el || !mapReady) return;
+    const observer = new ResizeObserver(() => {
+      mapInstanceRef.current?.invalidateSize({ animate: false });
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [flights.length]);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mapReady]);
 
   if (flights.length === 0) {
     return (
       <div
         className={cn(
-          "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center md:min-h-0 md:flex-1",
+          "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center md:min-h-[360px] lg:min-h-0 lg:flex-1",
           className,
         )}
       >
@@ -181,7 +192,7 @@ export function RecentFlightPathsMap({
   return (
     <div
       className={cn(
-        "relative min-h-[280px] overflow-hidden rounded-2xl border border-border md:min-h-0 md:flex-1",
+        "relative min-h-[280px] overflow-hidden rounded-2xl border border-border md:min-h-[360px] lg:min-h-0 lg:flex-1",
         className,
       )}
     >

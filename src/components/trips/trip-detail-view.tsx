@@ -12,23 +12,6 @@ import { formatTripDateRange, tripDayCount } from "@/lib/trips/format";
 import type { TripDetailDto } from "@/lib/trips/types";
 import { setMediaReturnPath } from "@/lib/navigation/media-return";
 
-function StatPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-lg bg-muted/60 px-3 py-1.5 dark:bg-muted/40">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <p className="text-sm font-semibold tabular-nums">{value}</p>
-    </div>
-  );
-}
-
 export function TripDetailView({ tripId }: { tripId: string }) {
   const [trip, setTrip] = useState<TripDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,92 +107,71 @@ export function TripDetailView({ tripId }: { tripId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="relative shrink-0 border-b border-border">
-        {trip.coverThumbnailUrl ? (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={trip.coverThumbnailUrl}
-              alt=""
-              className="size-full scale-105 object-cover opacity-25 blur-md"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/92 to-background" />
-          </div>
-        ) : null}
-
-        <div className="relative px-4 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 gap-3">
-              {trip.coverThumbnailUrl ? (
-                <div className="hidden h-16 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-muted sm:block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={trip.coverThumbnailUrl}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                </div>
-              ) : null}
-              <div className="min-w-0">
-                <Link
-                  href="/trips"
-                  className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      <div className="grid shrink-0 gap-4 border-b border-border px-4 py-3 lg:grid-cols-[minmax(0,1fr)_min(44%,26rem)] lg:items-start lg:gap-5 lg:py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start gap-2">
+            <Link
+              href="/trips"
+              aria-label="All trips"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+            >
+              <ArrowLeft className="size-5" />
+            </Link>
+            <div className="min-w-0 flex-1">
+              {editing ? (
+                <form
+                  onSubmit={(e) => void saveTrip(e)}
+                  className="space-y-3"
                 >
-                  <ArrowLeft className="size-4" />
-                  All trips
-                </Link>
-                {editing ? (
-                  <form
-                    onSubmit={(e) => void saveTrip(e)}
-                    className="mt-1 max-w-xl space-y-3"
-                  >
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={120}
+                    required
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      maxLength={120}
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
                       required
                     />
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        required
-                      />
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        required
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={busy}>
-                        Save
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setEditing(false)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                      {trip.name}
-                    </h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatTripDateRange(trip.startDate, trip.endDate)} ·{" "}
-                      {days} day{days === 1 ? "" : "s"}
-                    </p>
-                  </>
-                )}
-              </div>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={startDate}
+                      required
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" disabled={busy}>
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditing(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <h1 className="text-xl font-semibold tracking-tight">
+                    {trip.name}
+                  </h1>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {formatTripDateRange(trip.startDate, trip.endDate)} ·{" "}
+                    {days} day{days === 1 ? "" : "s"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    photos {trip.photoCount} · videos {trip.videoCount}
+                  </p>
+                </>
+              )}
             </div>
             {!editing ? (
               <div className="flex shrink-0 gap-2">
@@ -233,42 +195,26 @@ export function TripDetailView({ tripId }: { tripId: string }) {
               </div>
             ) : null}
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <StatPill label="Media" value={trip.assetCount} />
-            <StatPill label="Photos" value={trip.photoCount} />
-            <StatPill label="Videos" value={trip.videoCount} />
-            {trip.panoramaCount > 0 ? (
-              <StatPill label="Panos" value={trip.panoramaCount} />
-            ) : null}
-            <StatPill label="With GPS" value={trip.locatedCount} />
-          </div>
-
           {error ? (
-            <p className="mt-3 text-sm text-destructive">{error}</p>
+            <p className="mt-2 text-sm text-destructive">{error}</p>
           ) : null}
         </div>
-      </header>
 
-      <div className="shrink-0 px-4 py-3">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Map
-        </p>
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card lg:row-span-1">
           {trip.locatedCount > 0 ? (
             <TripMapView
               tripId={tripId}
-              className="h-[min(32vh,260px)] rounded-none border-0 bg-muted"
+              className="h-[min(42vh,360px)] min-h-[220px] rounded-none border-0 bg-muted lg:h-[min(48vh,400px)]"
             />
           ) : (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               No geotagged media in this date range.
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col border-t border-border">
+      <div className="flex min-h-0 flex-1 flex-col">
         <TimelineView tripId={tripId} variant="embedded" />
       </div>
     </div>
